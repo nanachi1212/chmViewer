@@ -1,0 +1,17 @@
+# Python
+.env
+.env.*
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# 解壓、快取與暫存
+.cache/
+cache/
+.chm-tmp/
+chm-*/
+
+# 測試輸出與記錄
+evidence/
+*.log

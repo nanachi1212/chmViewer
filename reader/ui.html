@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CHM 閱讀器</title>
+<style>
+*{box-sizing:border-box}body{font:16px "Microsoft JhengHei",sans-serif;color:#263b42;background:#f6f3ed;margin:0;height:100vh;display:flex;flex-direction:column}
+header{padding:14px 20px;background:#526b78;color:white;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:19px;margin:0;flex:1;min-width:140px}button,input,select{font:inherit;border:1px solid #b5c0bd;border-radius:6px;padding:8px 11px}
+button{background:#edf1ea;color:#253d38;cursor:pointer}button:hover{background:#d9e3d7}
+form,label{display:flex;gap:6px;align-items:center}input{width:210px}
+main{display:flex;flex:1;min-height:0}aside{width:310px;min-width:230px;background:#eeeee6;overflow:auto;padding:16px;border-right:1px solid #c3cbc6}
+h2{font-size:16px;margin:10px 0}#toc button{display:block;text-align:left;width:100%;border:0;background:transparent;overflow-wrap:anywhere}#toc button:hover{background:#dbe2d7}#toc .group{font-weight:bold;padding:8px}
+#results button{display:block;width:100%;margin:8px 0;text-align:left;background:white}#results strong{display:block}#results small{display:block;margin-top:6px;color:#51605b;line-height:1.6}
+#reading{flex:1;min-width:0;display:flex;flex-direction:column}#pageinfo{padding:9px 16px;font-size:14px;background:#e2e8e7}
+iframe{border:0;flex:1;width:100%;background:white}#status{padding:10px 20px;min-height:42px;border-top:1px solid #ccd2cd}#status.error{color:#922c32}#empty{padding:50px 30px;color:#536c66}
+@media(max-width:760px){header{gap:8px;padding:10px}aside{width:230px;min-width:180px}form{width:100%}input{flex:1}}
+</style>
+<header><h1 id="booktitle">CHM 閱讀器</h1><button id="open">開啟 CHM</button>
+<label>編碼<select id="encoding"><option value="auto">自動偵測</option><option value="gb18030">GB18030（含 GBK／GB2312）</option><option value="utf-8">UTF-8</option><option value="cp950">Big5</option></select></label>
+<form id="search"><input id="query" aria-label="全文搜尋" placeholder="全文搜尋（繁簡互通）" required><button>搜尋</button></form><button id="exit">關閉閱讀器</button></header>
+<main><aside><section id="results" hidden><h2>搜尋結果</h2><div id="matches"></div></section><h2>目錄</h2><nav id="toc" aria-label="電子書目錄"></nav></aside>
+<section id="reading"><div id="pageinfo">尚未開啟電子書</div><div id="empty">按「開啟 CHM」選擇電子書，或將檔案拖到「開啟.cmd」。</div><iframe id="page" title="電子書內文" sandbox="allow-same-origin" hidden></iframe></section></main>
+<div id="status" role="status" aria-live="polite">就緒</div>
+<script>
+'use strict';
+const el=id=>document.getElementById(id),prefix=location.pathname;
+let characters={},current=null,query='',revision=0,currentPath='';
+function busy(value){for(const node of document.querySelectorAll('button,input,select'))if(node.id!=='exit')node.disabled=value;}
+function status(message,error=false){el('status').textContent=message;el('status').className=error?'error':'';}
+async function api(path,data){
+ const response=await fetch(prefix+'api/'+path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+ const result=await response.json();if(!response.ok)throw Error(result.error||'操作失敗');return result;
+}
+function normalize(text){return Array.from(text,c=>characters[c]||c).join('');}
+function openPage(path,fragment=''){
+ if(!path)return;currentPath=path;el('empty').hidden=true;el('page').hidden=false;
+ el('page').src=prefix+'book/'+path.split('/').map(encodeURIComponent).join('/').replace(/^\//,'')+'?revision='+revision+(fragment?'#'+encodeURIComponent(fragment):'');
+ el('pageinfo').textContent='載入頁面…';
+}
+function showBook(book){
+ current=book;revision=book.revision;query='';el('matches').replaceChildren();el('results').hidden=true;
+ el('booktitle').textContent=book.title;document.title=book.title+' — CHM 閱讀器';el('encoding').value=book.encoding;el('toc').replaceChildren();
+ for(const item of book.toc){
+  const node=document.createElement(item.path?'button':'div');node.textContent=item.title;node.style.paddingLeft=(10+Math.min(item.depth,20)*16)+'px';
+  if(item.path)node.onclick=()=>{query='';openPage(item.path,item.fragment);};else node.className='group';el('toc').append(node);
+ }
+ if(book.home)openPage(book.home);status(book.pages?'已開啟，共 '+book.pages+' 頁。':'請選擇 CHM 電子書。');
+}
+function highlight(){
+ const doc=el('page').contentDocument;if(!doc||!doc.body)return;
+ for(const mark of Array.from(doc.querySelectorAll('mark[data-chm-hit]')))mark.replaceWith(doc.createTextNode(mark.textContent));
+ doc.body.normalize();if(!query)return;
+ const nodes=[],walker=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT);
+ while(walker.nextNode()){const node=walker.currentNode;if(!node.parentElement.closest('script,style,title,head'))nodes.push(node);}
+ let text='';const positions=[];
+ for(const node of nodes){let offset=0;for(const char of Array.from(node.data)){
+  const mapped=normalize(char);text+=mapped;for(let i=0;i<mapped.length;i++)positions.push({node:node,from:offset,to:offset+char.length});offset+=char.length;
+ }}
+ const needle=normalize(query.trim()),segments=[];if(!needle)return;let count=0;
+ for(let at=text.indexOf(needle);at>=0;at=text.indexOf(needle,at+needle.length)){
+  count++;let segment=null;
+  for(let i=at;i<at+needle.length;i++){const pos=positions[i];if(segment&&segment.node===pos.node)segment.to=pos.to;else{segment={node:pos.node,from:pos.from,to:pos.to};segments.push(segment);}}
+ }
+ for(const segment of segments.reverse()){const range=doc.createRange();range.setStart(segment.node,segment.from);range.setEnd(segment.node,segment.to);const mark=doc.createElement('mark');mark.dataset.chmHit='';range.surroundContents(mark);}
+ const first=doc.querySelector('mark[data-chm-hit]');if(first)first.scrollIntoView({block:'center'});
+ status(count?'本頁找到 '+count+' 處，已標示並捲動到第一處。':'本頁沒有符合的文字。');
+}
+el('page').addEventListener('load',()=>{const doc=el('page').contentDocument;if(doc){el('pageinfo').textContent=doc.title||currentPath;highlight();}});
+el('open').onclick=async()=>{busy(true);status('請在檔案對話框選擇 CHM…');try{showBook(await api('open',{}));}catch(e){status(e.message,true);}finally{busy(false);}};
+el('encoding').onchange=async()=>{busy(true);status('重新解碼並建立全文索引…');try{showBook(await api('encoding',{encoding:el('encoding').value}));}catch(e){el('encoding').value=current.encoding;status(e.message,true);}finally{busy(false);}};
+el('search').onsubmit=async event=>{
+ event.preventDefault();busy(true);query=el('query').value.trim();status('搜尋整本書…');
+ try{const matches=await api('search?q='+encodeURIComponent(query));el('matches').replaceChildren();el('results').hidden=false;
+ for(const match of matches){const button=document.createElement('button'),title=document.createElement('strong'),snippet=document.createElement('small');title.textContent=match.title+'（'+match.count+' 處）';snippet.textContent=match.snippet;button.append(title,snippet);button.onclick=()=>openPage(match.path);el('matches').append(button);}
+ status('找到 '+matches.length+' 個頁面。');highlight();}catch(e){status(e.message,true);}finally{busy(false);}
+};
+el('exit').onclick=async()=>{try{await api('exit',{});status('閱讀器已關閉，可關閉此分頁。');el('exit').disabled=true;}catch(e){status(e.message,true);}};
+(async()=>{try{characters=await api('characters');showBook(await api('book'));}catch(e){status(e.message,true);}})();
+</script></html>
