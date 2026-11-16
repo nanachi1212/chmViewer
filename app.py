@@ -27,6 +27,33 @@ def choose_file():
     root.withdraw()
     root.attributes('-topmost', True)
     try:
+        # 隱藏的父視窗無法承接前景焦點；透明映射後讓原生對話框繼承。
+        root.attributes('-alpha', 0.0)
+        root.deiconify()
+        root.update()
+        root.lift()
+        root.focus_force()
+        if os.name == 'nt':
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            user32.GetForegroundWindow.restype = wintypes.HWND
+            user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+            user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+            user32.GetAncestor.restype = wintypes.HWND
+            user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+            foreground = user32.GetForegroundWindow()
+            foreground_thread = user32.GetWindowThreadProcessId(foreground, None)
+            current_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+            # HTTP 點擊由瀏覽器接收；短暫共用輸入焦點後立即解除。
+            attached = foreground_thread != current_thread and user32.AttachThreadInput(
+                current_thread, foreground_thread, True)
+            try:
+                user32.SetForegroundWindow(user32.GetAncestor(root.winfo_id(), 2))
+                root.focus_force()
+            finally:
+                if attached:
+                    user32.AttachThreadInput(current_thread, foreground_thread, False)
         return filedialog.askopenfilename(parent=root, title='開啟 CHM 電子書',
                                          filetypes=[('CHM 電子書', '*.chm')])
     finally:
@@ -137,7 +164,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             route, _ = self.route()
             origin = self.headers.get('Origin')
-            if origin and origin != f'http://127.0.0.1:{server.server_port}':
+            # Origin 不含 port 時，另以同源 Fetch Metadata 驗證。
+            stripped_same_origin = (origin == 'http://127.0.0.1'
+                                    and self.headers.get('Sec-Fetch-Site') == 'same-origin')
+            if origin and origin != f'http://127.0.0.1:{server.server_port}' and not stripped_same_origin:
                 raise ValueError('不接受其他網頁的操作請求。')
             length = int(self.headers.get('Content-Length', '0'))
             if not 0 <= length <= 8192:

@@ -255,9 +255,9 @@ class HTTPTests(unittest.TestCase):
         self.server.server_close()
         self.server.close_book()
 
-    def request(self, route, data=None):
+    def request(self, route, data=None, headers=None):
         request=Request(self.server.url+route, None if data is None else json.dumps(data).encode('utf-8'),
-                        headers={'Content-Type':'application/json'})
+                        headers={'Content-Type':'application/json', **(headers or {})})
         return urlopen(request,timeout=10)
 
     def test_http_json_html_assets_and_search(self):
@@ -332,6 +332,62 @@ class HTTPTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as caught:
             urlopen(request,timeout=5)
         caught.exception.close()
+
+    def test_same_origin_posts_accept_full_origin(self):
+        headers={'Origin':f'http://127.0.0.1:{self.server.server_port}',
+                 'Sec-Fetch-Site':'same-origin'}
+        with self.request('api/encoding',{'encoding':'auto'},headers) as response:
+            self.assertEqual(json.load(response)['encoding'],'auto')
+
+    def test_same_origin_chrome_posts_with_stripped_origin_port(self):
+        # 系統預設 Chrome 實測：Origin 遺失 port，Fetch Metadata 仍為 same-origin。
+        headers={'Origin':'http://127.0.0.1','Sec-Fetch-Site':'same-origin',
+                 'Sec-Fetch-Mode':'cors','Sec-Fetch-Dest':'empty'}
+        def choose(action):
+            if action[0]=='pick':
+                action[1].put((str(FIXTURES/'測試 GBK.chm'),None))
+        with patch.object(self.server.actions,'put',side_effect=choose) as enqueue:
+            for route,data in [('api/open',{}),('api/encoding',{'encoding':'auto'})]:
+                with self.subTest(route=route):
+                    with self.request(route,data,headers) as response:
+                        self.assertEqual(response.status,200)
+            self.assertEqual(enqueue.call_args_list[0].args[0][0],'pick')
+        with self.request('api/exit',{},headers) as response:
+            self.assertEqual(response.status,200)
+        self.assertEqual(self.server.actions.get(timeout=5),('exit',None))
+
+    def test_cross_origin_posts_remain_rejected(self):
+        for origin in ['http://example.com','null',f'http://127.0.0.1:{self.server.server_port+1}']:
+            with self.subTest(origin=origin):
+                with self.assertRaises(HTTPError) as caught:
+                    self.request('api/encoding',{'encoding':'auto'},
+                                 {'Origin':origin,'Sec-Fetch-Site':'same-origin'})
+                with caught.exception as response:
+                    self.assertEqual(response.code,400)
+                    self.assertEqual(json.load(response)['error'],'不接受其他網頁的操作請求。')
+
+    def test_stripped_origin_requires_same_origin_fetch_metadata(self):
+        for site in [None,'cross-site','same-site','none']:
+            with self.subTest(site=site):
+                headers={'Origin':'http://127.0.0.1'}
+                if site is not None:
+                    headers['Sec-Fetch-Site']=site
+                with self.assertRaises(HTTPError) as caught:
+                    self.request('api/encoding',{'encoding':'auto'},headers)
+                with caught.exception as response:
+                    self.assertEqual(response.code,400)
+                    self.assertEqual(json.load(response)['error'],'不接受其他網頁的操作請求。')
+
+    def test_foreign_host_rejected_even_with_same_origin_headers(self):
+        for route in ['api/book','api/encoding','api/open','api/exit']:
+            with self.subTest(route=route):
+                with self.assertRaises(HTTPError) as caught:
+                    self.request(route,None if route=='api/book' else {},
+                                 {'Host':f'example.com:{self.server.server_port}',
+                                  'Origin':'http://127.0.0.1','Sec-Fetch-Site':'same-origin'})
+                with caught.exception as response:
+                    self.assertEqual(response.code,400)
+                    self.assertEqual(json.load(response)['error'],'只接受本機閱讀器的請求。')
 
     def test_failed_book_change_keeps_previous_book(self):
         with self.assertRaises(OSError):
