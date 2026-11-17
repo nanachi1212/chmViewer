@@ -298,6 +298,8 @@ class HTTPTests(unittest.TestCase):
         self.assertTrue(server.book._owns_archive)
 
     def test_cancel_dialog_preserves_book(self):
+        previous = self.server.metadata()
+        previous_book = self.server.book
         result=[]
         def requester():
             with self.request('api/open',{}) as response:
@@ -308,9 +310,11 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(action,'pick')
         answer.put(('',None))
         thread.join(timeout=5)
-        self.assertEqual(result[0]['title'],'測試書籍 GBK')
+        self.assertEqual(result[0],previous)
+        self.assertIs(self.server.book,previous_book)
 
     def test_file_dialog_selection_opens_chinese_spaced_path(self):
+        previous_revision = self.server.revision
         result=[]
         def requester():
             with self.request('api/open',{}) as response:
@@ -322,6 +326,7 @@ class HTTPTests(unittest.TestCase):
         answer.put((str(FIXTURES/'測試 UTF-8.chm'),None))
         thread.join(timeout=5)
         self.assertEqual(result[0]['title'],'測試書籍 UTF-8')
+        self.assertEqual(result[0]['revision'],previous_revision+1)
         self.assertEqual(result[0]['toc'][1]['path'],'/章節/中文 頁面.htm')
 
     def test_unknown_session_and_cross_origin_post_rejected(self):

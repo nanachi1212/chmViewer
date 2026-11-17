@@ -65,7 +65,12 @@ function highlight(){
  status(count?'本頁找到 '+count+' 處，已標示並捲動到第一處。':'本頁沒有符合的文字。');
 }
 el('page').addEventListener('load',()=>{const doc=el('page').contentDocument;if(doc){el('pageinfo').textContent=doc.title||currentPath;highlight();}});
-el('open').onclick=async()=>{busy(true);status('請在檔案對話框選擇 CHM…');try{showBook(await api('open',{}));}catch(e){status(e.message,true);}finally{busy(false);}};
+el('open').onclick=async()=>{
+ const previousStatus=el('status').textContent,previousError=el('status').className==='error';
+ busy(true);status('請在檔案對話框選擇 CHM…');
+ try{const book=await api('open',{});if(book.revision!==revision)showBook(book);else status(previousStatus,previousError);}
+ catch(e){status(e.message,true);}finally{busy(false);}
+};
 el('encoding').onchange=async()=>{busy(true);status('重新解碼並建立全文索引…');try{showBook(await api('encoding',{encoding:el('encoding').value}));}catch(e){el('encoding').value=current.encoding;status(e.message,true);}finally{busy(false);}};
 el('search').onsubmit=async event=>{
  event.preventDefault();busy(true);query=el('query').value.trim();status('搜尋整本書…');
