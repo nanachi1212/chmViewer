@@ -77,6 +77,18 @@ class TextParser(HTMLParser):
             self.parts.append(data)
 
 
+class AnchorParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.names = set()
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        for value in [attrs.get('id'), attrs.get('name') if tag == 'a' else None]:
+            if value is not None:
+                self.names.add(value)
+
+
 class TocParser(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -131,6 +143,7 @@ class Book:
                     legacy_name = decode_name(raw, self.archive.hint, override)[0]
                     self.lookup.setdefault(self.key(legacy_name), name)
             self.pages = {}
+            self._anchors = {}
             for name in self.names:
                 if name.lower().endswith(('.htm', '.html', '.xhtml')):
                     html, codec = self.decode(name)
@@ -187,6 +200,17 @@ class Book:
                 path = posixpath.join(posixpath.dirname(source_base), decoded)
             name = self.lookup.get(self.key(path))
             if name is not None:
+                if self.override != 'auto' and '%' in split.fragment and name in self.pages:
+                    legacy = decode_name(unquote_to_bytes(split.fragment), self.archive.hint, self.override)[0]
+                    if legacy != fragment:
+                        # 位元組同時符合兩種編碼時，以目標頁實際錨點保留手動覆寫的語意。
+                        if name not in self._anchors:
+                            parser = AnchorParser()
+                            parser.feed(self.pages[name].html)
+                            parser.close()
+                            self._anchors[name] = parser.names
+                        if legacy in self._anchors[name]:
+                            fragment = legacy
                 return name, fragment
         return None, fragment
 

@@ -284,6 +284,25 @@ class BookTests(unittest.TestCase):
         self.assertNotIn('<iframe',rendered)
         self.assertNotIn('unsafe.ocx',rendered)
 
+    def test_manual_ambiguous_percent_anchor_uses_existing_target(self):
+        legacy = '璋曟郊'
+        utf8 = legacy.encode('gbk').decode('utf-8')
+        fragment = quote(legacy.encode('gbk'))
+        for target, attr in [(legacy,'id'),(legacy,'name'),(utf8,'id')]:
+            with self.subTest(target=target,attr=attr):
+                files = fixture_files('gbk','GBK')
+                files['/index.htm'] = ('<meta charset="gbk"><a href="index.htm#'+fragment+'">跳轉</a>'
+                                       '<a '+attr+'="'+target+'">目標</a>').encode('gbk')
+                files['/toc.hhc'] = ('<ul><object type="text/sitemap"><param name="Name" value="錨點">'
+                                     '<param name="Local" value="index.htm#'+fragment+'"></object></ul>').encode('gbk')
+                path = Path(self.temp.name) / ('anchor-'+attr+str(len(target))+'.chm')
+                write_chm(path, files)
+                book = self.book(path, 'gb18030')
+                self.assertEqual(book.resolve('index.htm#'+fragment),('/index.htm',target))
+                self.assertEqual(book.toc[0]['fragment'],target)
+                self.assertIn('href="/session/book/index.htm#'+quote(target)+'"',
+                              book.render('/index.htm','/session/').decode())
+
     def test_invalid_archive_rejected(self):
         path=Path(self.temp.name)/'壞掉.chm'
         path.write_bytes(b'not a chm')
