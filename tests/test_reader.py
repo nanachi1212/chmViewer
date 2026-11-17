@@ -148,6 +148,25 @@ class BookTests(unittest.TestCase):
         book=self.book(path)
         self.assertEqual(book.toc[1]['path'],'/章節/中文 頁面.htm')
 
+    def test_manual_content_encoding_preserves_utf8_directory_names(self):
+        for codec, label, override in [('gbk','GBK','gb18030'),('cp950','Big5','cp950')]:
+            with self.subTest(codec=codec):
+                path = Path(self.temp.name) / (label + '.chm')
+                write_chm(path, fixture_files(codec,label), 0x404 if codec=='cp950' else 0x804)
+                auto, manual = self.book(path), self.book(path, override)
+                self.assertEqual(manual.names, auto.names)
+                self.assertEqual(manual.toc, auto.toc)
+                self.assertEqual(manual.search('電腦'), auto.search('电脑'))
+                self.assertEqual(manual.resolve('中文 頁面.htm', '/章節/other.htm'),
+                                 ('/章節/中文 頁面.htm', ''))
+
+    def test_manual_encoding_can_correct_legacy_directory_metadata(self):
+        path = Path(self.temp.name) / 'wrong-lcid.chm'
+        write_chm(path, fixture_files('gbk','GBK'), 0x404, name_encoding='gbk')
+        book = self.book(path, 'gb18030')
+        self.assertIn('/章節/中文 頁面.htm', book.pages)
+        self.assertEqual(book.toc[1]['path'], '/章節/中文 頁面.htm')
+
     def test_without_hhc_lists_all_html(self):
         files=fixture_files('gbk','GBK')
         del files['/toc.hhc']
@@ -314,6 +333,14 @@ class HTTPTests(unittest.TestCase):
                         for query in ['電腦','电脑']:
                             with self.request('api/search?q='+quote(query)) as response:
                                 self.assertEqual(json.load(response), expected_search)
+
+            # 現有 fixture 的 HTML 是 GBK，目錄檔名則是 UTF-8，與真實書相同。
+            self.server.replace(FIXTURES/'測試 GBK.chm')
+            with self.request('api/encoding', {'encoding':'gb18030'}) as response:
+                page = json.load(response)['toc'][1]['path']
+            self.assertEqual(page, '/章節/中文 頁面.htm')
+            with self.request('book/'+quote(page.lstrip('/'))) as response:
+                self.assertIn('歡迎閱讀 GBK', response.read().decode('utf-8'))
 
     def test_browser_path_is_decoded_once_without_reparsing_filename(self):
         with tempfile.TemporaryDirectory() as folder:
