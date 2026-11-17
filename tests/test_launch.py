@@ -54,6 +54,47 @@ def stop(process, ready_info):
 
 @unittest.skipUnless(os.name=='nt','此項驗證 Windows CMD 啟動入口')
 class LauncherTests(unittest.TestCase):
+    def test_file_dialog_opens_in_foreground(self):
+        from ctypes import wintypes
+        import sys
+        user32=ctypes.windll.user32
+        user32.GetForegroundWindow.restype=wintypes.HWND
+        if not user32.GetForegroundWindow():
+            self.skipTest('此測試需要互動式 Windows 桌面')
+        callback=ctypes.WINFUNCTYPE(wintypes.BOOL,wintypes.HWND,wintypes.LPARAM)
+        process=subprocess.Popen([sys.executable,'-B','-X','utf8','-c',
+                                  'from app import choose_file; choose_file()'],cwd=ROOT,
+                                 stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+                                 creationflags=subprocess.CREATE_NO_WINDOW)
+        dialogs=[]
+        def find_dialog(hwnd,_):
+            owner=wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd,ctypes.byref(owner))
+            title=ctypes.create_unicode_buffer(128)
+            user32.GetWindowTextW(hwnd,title,128)
+            if owner.value==process.pid and title.value=='開啟 CHM 電子書' and user32.IsWindowVisible(hwnd):
+                dialogs.append(hwnd)
+            return True
+        try:
+            deadline=time.monotonic()+10
+            while not dialogs and time.monotonic()<deadline:
+                user32.EnumWindows(callback(find_dialog),0)
+                time.sleep(0.05)
+            self.assertTrue(dialogs,'本次測試行程應顯示原生選檔對話框')
+            time.sleep(0.5)
+            self.assertEqual(user32.GetForegroundWindow(),dialogs[0],
+                             '檔案對話框應在前景，不能被瀏覽器遮住')
+        finally:
+            if dialogs:
+                user32.PostMessageW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM]
+                user32.PostMessageW(dialogs[0],0x0111,2,0)  # IDCANCEL；只關閉本次 PID 的對話框。
+            try:
+                output=process.communicate(timeout=5)[0]
+            except subprocess.TimeoutExpired:
+                process.kill()
+                output=process.communicate(timeout=5)[0]
+        self.assertEqual(process.returncode,0,output.decode('utf-8',errors='replace'))
+
     def test_cmd_crlf_and_four_fixtures_plus_lzx(self):
         generate()
         acp=ctypes.windll.kernel32.GetACP()
