@@ -148,6 +148,61 @@ class BookTests(unittest.TestCase):
         book=self.book(path)
         self.assertEqual(book.toc[1]['path'],'/章節/中文 頁面.htm')
 
+    def test_manual_content_encoding_preserves_utf8_directory_names(self):
+        for codec, label, override in [('gbk','GBK','gb18030'),('cp950','Big5','cp950')]:
+            with self.subTest(codec=codec):
+                path = Path(self.temp.name) / (label + '.chm')
+                write_chm(path, fixture_files(codec,label), 0x404 if codec=='cp950' else 0x804)
+                auto, manual = self.book(path), self.book(path, override)
+                self.assertEqual(manual.names, auto.names)
+                self.assertEqual(manual.toc, auto.toc)
+                self.assertEqual(manual.search('電腦'), auto.search('电脑'))
+                self.assertEqual(manual.resolve('中文 頁面.htm', '/章節/other.htm'),
+                                 ('/章節/中文 頁面.htm', ''))
+
+    def test_manual_encoding_can_correct_legacy_directory_metadata(self):
+        for lcid in (0x404,65001):
+            with self.subTest(lcid=lcid):
+                path = Path(self.temp.name) / ('wrong-lcid-'+str(lcid)+'.chm')
+                files = fixture_files('gbk','GBK')
+                del files['/#SYSTEM']  # 使用錯誤 header LCID，而非 fixture 的正確 #SYSTEM。
+                write_chm(path, files, lcid, name_encoding='gbk')
+                book = self.book(path, 'gb18030')
+                self.assertIn('/章節/中文 頁面.htm', book.pages)
+                self.assertEqual(book.toc[1]['path'], '/章節/中文 頁面.htm')
+
+    def test_manual_legacy_name_that_is_also_valid_utf8(self):
+        path = Path(self.temp.name) / 'ambiguous-name.chm'
+        legacy = '绔犺妭'  # GBK bytes 同時是 UTF-8 的「章节」。
+        files = fixture_files('gbk','GBK')
+        files['/'+legacy+'/one.htm'] = '<meta charset="gbk"><a href="two.htm">下一頁</a>'.encode('gbk')
+        files['/'+legacy+'/two.htm'] = '<meta charset="gbk"><body>第二頁</body>'.encode('gbk')
+        files['/toc.hhc'] = ('<ul><object type="text/sitemap"><param name="Name" value="章節">'
+                             '<param name="Local" value="'+legacy+'/one.htm"></object></ul>').encode('gbk')
+        write_chm(path, files, name_encoding='gbk')
+        book = self.book(path, 'gb18030')
+        first = book.resolve(legacy+'/one.htm')[0]
+        second = book.resolve(legacy+'/two.htm')[0]
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+        self.assertEqual(book.toc[0]['path'], first)
+        self.assertEqual(book.resolve('two.htm', first)[0], second)
+        self.assertIn('/session/book/'+quote(second.lstrip('/')), book.render(first,'/session/').decode())
+
+    def test_manual_gbk_content_with_utf8_percent_links(self):
+        path = Path(self.temp.name) / 'utf8-links.chm'
+        files = fixture_files('gbk','GBK')
+        target = '/章節/中文 頁面.htm'
+        files['/章節/入口.htm'] = ('<meta charset="gbk"><a href="'+quote('中文 頁面.htm')+'">下一頁</a>').encode('gbk')
+        files['/toc.hhc'] = ('<ul><object type="text/sitemap"><param name="Name" value="中文頁面">'
+                             '<param name="Local" value="'+quote(target)+'"></object></ul>').encode('gbk')
+        write_chm(path, files)
+        book = self.book(path, 'gb18030')
+        self.assertEqual(book.toc[0]['path'], target)
+        self.assertEqual(book.resolve(quote('中文 頁面.htm'), '/章節/入口.htm')[0], target)
+        self.assertIn('/session/book/'+quote(target.lstrip('/')),
+                      book.render('/章節/入口.htm','/session/').decode())
+
     def test_without_hhc_lists_all_html(self):
         files=fixture_files('gbk','GBK')
         del files['/toc.hhc']
@@ -205,12 +260,14 @@ class BookTests(unittest.TestCase):
                                        '</object></ul>').encode(codec)
                     path=Path(self.temp.name)/'anchors.chm'
                     write_chm(path,files,lcid)
-                    book=self.book(path)
-                    self.assertEqual(book.resolve('index.htm#'+fragment),('/index.htm','中文錨點'))
-                    self.assertEqual(book.toc[0]['fragment'],'中文錨點')
-                    rendered=book.render('/index.htm','/session/').decode('utf-8')
-                    self.assertIn('#'+quote('中文錨點'),rendered)
-                    self.assertNotIn('#%25',rendered)
+                    for override in ['auto', 'gb18030' if codec == 'gbk' else codec]:
+                        with self.subTest(override=override):
+                            book=self.book(path,override)
+                            self.assertEqual(book.resolve('index.htm#'+fragment),('/index.htm','中文錨點'))
+                            self.assertEqual(book.toc[0]['fragment'],'中文錨點')
+                            rendered=book.render('/index.htm','/session/').decode('utf-8')
+                            self.assertIn('#'+quote('中文錨點'),rendered)
+                            self.assertNotIn('#%25',rendered)
 
     def test_object_and_iframe_fallback_text_stays_searchable_and_visible(self):
         files=fixture_files('gbk','GBK')
@@ -226,6 +283,25 @@ class BookTests(unittest.TestCase):
         self.assertNotIn('<object',rendered)
         self.assertNotIn('<iframe',rendered)
         self.assertNotIn('unsafe.ocx',rendered)
+
+    def test_manual_ambiguous_percent_anchor_uses_existing_target(self):
+        legacy = '璋曟郊'
+        utf8 = legacy.encode('gbk').decode('utf-8')
+        fragment = quote(legacy.encode('gbk'))
+        for target, attr in [(legacy,'id'),(legacy,'name'),(utf8,'id')]:
+            with self.subTest(target=target,attr=attr):
+                files = fixture_files('gbk','GBK')
+                files['/index.htm'] = ('<meta charset="gbk"><a href="index.htm#'+fragment+'">跳轉</a>'
+                                       '<a '+attr+'="'+target+'">目標</a>').encode('gbk')
+                files['/toc.hhc'] = ('<ul><object type="text/sitemap"><param name="Name" value="錨點">'
+                                     '<param name="Local" value="index.htm#'+fragment+'"></object></ul>').encode('gbk')
+                path = Path(self.temp.name) / ('anchor-'+attr+str(len(target))+'.chm')
+                write_chm(path, files)
+                book = self.book(path, 'gb18030')
+                self.assertEqual(book.resolve('index.htm#'+fragment),('/index.htm',target))
+                self.assertEqual(book.toc[0]['fragment'],target)
+                self.assertIn('href="/session/book/index.htm#'+quote(target)+'"',
+                              book.render('/index.htm','/session/').decode())
 
     def test_invalid_archive_rejected(self):
         path=Path(self.temp.name)/'壞掉.chm'
@@ -282,6 +358,67 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(json.load(response)['encoding'],'auto')
         with self.request('api/search?q='+quote('電腦')) as response:
             self.assertEqual(json.load(response)[0]['count'],3)
+
+    def test_manual_encoding_preserves_browser_links_assets_and_search(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for codec, label, override, lcid in [('gbk','GBK','gb18030',0x804),
+                                                ('gb18030','GB18030','gb18030',0x804),
+                                                ('cp950','Big5','cp950',0x404),
+                                                ('utf-8','UTF-8','utf-8',65001)]:
+                path = Path(folder) / (label + '.chm')
+                writer = write_lzx_chm if codec == 'gbk' else write_chm
+                writer(path, fixture_files(codec,label), lcid, name_encoding=codec)
+                self.server.replace(path)
+                expected_search = self.server.book.search('電腦')
+                for encoding in [override, 'auto']:
+                    with self.subTest(codec=codec, encoding=encoding):
+                        with self.request('api/encoding', {'encoding':encoding}) as response:
+                            metadata = json.load(response)
+                        page = metadata['toc'][1]['path']
+                        self.assertEqual(page, '/章節/中文 頁面.htm')
+                        with self.request('book/'+quote(page.lstrip('/'))) as response:
+                            rendered = response.read().decode('utf-8')
+                        self.assertIn('歡迎閱讀 '+label, rendered)
+                        for name, kind in [('樣式.css','text/css'),('圖片.svg','image/svg+xml')]:
+                            self.assertIn(self.server.prefix+'book/'+quote(name), rendered)
+                            with self.request('book/'+quote(name)) as response:
+                                self.assertTrue(response.headers['Content-Type'].startswith(kind))
+                        self.assertIn(self.server.prefix+'book/index.htm#back', rendered)
+                        with self.request('book/index.htm') as response:
+                            self.assertIn(self.server.prefix+'book/'+quote(page.lstrip('/')),
+                                          response.read().decode('utf-8'))
+                        for query in ['電腦','电脑']:
+                            with self.request('api/search?q='+quote(query)) as response:
+                                self.assertEqual(json.load(response), expected_search)
+
+            # 現有 fixture 的 HTML 是 GBK，目錄檔名則是 UTF-8，與真實書相同。
+            self.server.replace(FIXTURES/'測試 GBK.chm')
+            with self.request('api/encoding', {'encoding':'gb18030'}) as response:
+                page = json.load(response)['toc'][1]['path']
+            self.assertEqual(page, '/章節/中文 頁面.htm')
+            with self.request('book/'+quote(page.lstrip('/'))) as response:
+                self.assertIn('歡迎閱讀 GBK', response.read().decode('utf-8'))
+
+    def test_browser_path_is_decoded_once_without_reparsing_filename(self):
+        with tempfile.TemporaryDirectory() as folder:
+            files = fixture_files('utf-8','UTF-8')
+            pages = {'/literal%20name.htm':'literal-percent', '/literal name.htm':'space',
+                     '/中文#章?節.htm':'reserved-characters'}
+            for name, marker in pages.items():
+                files[name] = ('<meta charset="utf-8"><body>'+marker+'</body>').encode('utf-8')
+            path = Path(folder) / 'url-boundary.chm'
+            write_chm(path, files, 65001)
+            self.server.replace(path, 'utf-8')
+            for name, marker in pages.items():
+                with self.subTest(name=name):
+                    with self.request('book/'+quote(name.lstrip('/'))) as response:
+                        self.assertIn(marker, response.read().decode('utf-8'))
+
+    def test_invalid_utf8_browser_path_is_rejected(self):
+        with self.assertRaises(HTTPError) as caught:
+            self.request('book/%FF.htm')
+        with caught.exception as response:
+            self.assertEqual(response.code,400)
 
     def test_lzx_archive_cache_is_reused_when_switching_encoding(self):
         server = ReaderServer(FIXTURES / '測試 LZX GBK.chm')

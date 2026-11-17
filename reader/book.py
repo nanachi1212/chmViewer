@@ -77,6 +77,18 @@ class TextParser(HTMLParser):
             self.parts.append(data)
 
 
+class AnchorParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.names = set()
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        for value in [attrs.get('id'), attrs.get('name') if tag == 'a' else None]:
+            if value is not None:
+                self.names.add(value)
+
+
 class TocParser(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -120,14 +132,18 @@ class Book:
             self.override = override
             self.names = self.archive.names(override)
             self.lookup = {self.key(name): name for name in self.names}
-            if override == 'auto':
-                for name, raw in self.names.items():
-                    try:
-                        utf8_name = raw.decode('utf-8', errors='strict')
-                    except UnicodeDecodeError:
-                        continue
+            for name, raw in self.names.items():
+                try:
+                    utf8_name = raw.decode('utf-8', errors='strict')
+                except UnicodeDecodeError:
+                    pass
+                else:
                     self.lookup.setdefault(self.key(utf8_name), name)
+                if override != 'auto':
+                    legacy_name = decode_name(raw, self.archive.hint, override)[0]
+                    self.lookup.setdefault(self.key(legacy_name), name)
             self.pages = {}
+            self._anchors = {}
             for name in self.names:
                 if name.lower().endswith(('.htm', '.html', '.xhtml')):
                     html, codec = self.decode(name)
@@ -166,17 +182,37 @@ class Book:
             if '%' not in value:
                 return value
             raw = unquote_to_bytes(value)
-            return decode_name(raw, self.archive.hint, self.override)[0]
+            # 百分號連結可獨立採 UTF-8；舊式位元組則以選定的書籍編碼解讀。
+            hint = self.archive.hint if self.override == 'auto' else self.override
+            return decode_name(raw, hint)[0]
         fragment = component(split.fragment)
         if split.scheme or split.netloc:
             return None, fragment
         # 中文路徑與錨點都只解碼一次，輸出時再統一採 UTF-8 URL 編碼。
         decoded = component(split.path)
-        if not decoded:
-            decoded = base
-        elif not decoded.startswith('/'):
-            decoded = posixpath.join(posixpath.dirname(base), decoded)
-        return self.lookup.get(self.key(decoded)), fragment
+        bases = [base]
+        if self.override != 'auto' and base in self.names:
+            # 相對連結也可能使用原書的舊式目錄名稱，不能只轉換最後一段。
+            bases.append(decode_name(self.names[base], self.archive.hint, self.override)[0])
+        for source_base in bases:
+            path = decoded or source_base
+            if decoded and not decoded.startswith('/'):
+                path = posixpath.join(posixpath.dirname(source_base), decoded)
+            name = self.lookup.get(self.key(path))
+            if name is not None:
+                if self.override != 'auto' and '%' in split.fragment and name in self.pages:
+                    legacy = decode_name(unquote_to_bytes(split.fragment), self.archive.hint, self.override)[0]
+                    if legacy != fragment:
+                        # 位元組同時符合兩種編碼時，以目標頁實際錨點保留手動覆寫的語意。
+                        if name not in self._anchors:
+                            parser = AnchorParser()
+                            parser.feed(self.pages[name].html)
+                            parser.close()
+                            self._anchors[name] = parser.names
+                        if legacy in self._anchors[name]:
+                            fragment = legacy
+                return name, fragment
+        return None, fragment
 
     def url(self, value, base, prefix):
         name, fragment = self.resolve(value, base)
