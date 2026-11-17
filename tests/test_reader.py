@@ -260,12 +260,14 @@ class BookTests(unittest.TestCase):
                                        '</object></ul>').encode(codec)
                     path=Path(self.temp.name)/'anchors.chm'
                     write_chm(path,files,lcid)
-                    book=self.book(path)
-                    self.assertEqual(book.resolve('index.htm#'+fragment),('/index.htm','中文錨點'))
-                    self.assertEqual(book.toc[0]['fragment'],'中文錨點')
-                    rendered=book.render('/index.htm','/session/').decode('utf-8')
-                    self.assertIn('#'+quote('中文錨點'),rendered)
-                    self.assertNotIn('#%25',rendered)
+                    for override in ['auto', 'gb18030' if codec == 'gbk' else codec]:
+                        with self.subTest(override=override):
+                            book=self.book(path,override)
+                            self.assertEqual(book.resolve('index.htm#'+fragment),('/index.htm','中文錨點'))
+                            self.assertEqual(book.toc[0]['fragment'],'中文錨點')
+                            rendered=book.render('/index.htm','/session/').decode('utf-8')
+                            self.assertIn('#'+quote('中文錨點'),rendered)
+                            self.assertNotIn('#%25',rendered)
 
     def test_object_and_iframe_fallback_text_stays_searchable_and_visible(self):
         files=fixture_files('gbk','GBK')

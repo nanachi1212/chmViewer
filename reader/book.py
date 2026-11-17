@@ -169,7 +169,9 @@ class Book:
             if '%' not in value:
                 return value
             raw = unquote_to_bytes(value)
-            return decode_name(raw, self.archive.hint, self.override)[0]
+            # 百分號連結可獨立採 UTF-8；舊式位元組則以選定的書籍編碼解讀。
+            hint = self.archive.hint if self.override == 'auto' else self.override
+            return decode_name(raw, hint)[0]
         fragment = component(split.fragment)
         if split.scheme or split.netloc:
             return None, fragment
