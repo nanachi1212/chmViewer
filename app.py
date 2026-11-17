@@ -8,7 +8,7 @@ import queue
 import secrets
 import sys
 import threading
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 import webbrowser
 
 from reader.archive import ROOT
@@ -141,7 +141,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif route == 'api/search':
                     self.send(server.book.search(query.get('q', [''])[0]) if server.book else [])
                 elif route.startswith('book/') and server.book:
-                    name = server.book.resolve('/' + route[5:])[0]
+                    # 閱讀器產生的 URL 固定是 UTF-8，不能再套用原書的手動編碼。
+                    path = unquote('/' + route[5:], encoding='utf-8', errors='strict')
+                    name = server.book.lookup.get(server.book.key(path))
                     if name is None:
                         raise FileNotFoundError('CHM 內找不到此頁面或資源。')
                     suffix = Path(name).suffix.lower()

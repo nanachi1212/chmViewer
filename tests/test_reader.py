@@ -283,6 +283,59 @@ class HTTPTests(unittest.TestCase):
         with self.request('api/search?q='+quote('電腦')) as response:
             self.assertEqual(json.load(response)[0]['count'],3)
 
+    def test_manual_encoding_preserves_browser_links_assets_and_search(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for codec, label, override, lcid in [('gbk','GBK','gb18030',0x804),
+                                                ('gb18030','GB18030','gb18030',0x804),
+                                                ('cp950','Big5','cp950',0x404),
+                                                ('utf-8','UTF-8','utf-8',65001)]:
+                path = Path(folder) / (label + '.chm')
+                writer = write_lzx_chm if codec == 'gbk' else write_chm
+                writer(path, fixture_files(codec,label), lcid, name_encoding=codec)
+                self.server.replace(path)
+                expected_search = self.server.book.search('電腦')
+                for encoding in [override, 'auto']:
+                    with self.subTest(codec=codec, encoding=encoding):
+                        with self.request('api/encoding', {'encoding':encoding}) as response:
+                            metadata = json.load(response)
+                        page = metadata['toc'][1]['path']
+                        self.assertEqual(page, '/章節/中文 頁面.htm')
+                        with self.request('book/'+quote(page.lstrip('/'))) as response:
+                            rendered = response.read().decode('utf-8')
+                        self.assertIn('歡迎閱讀 '+label, rendered)
+                        for name, kind in [('樣式.css','text/css'),('圖片.svg','image/svg+xml')]:
+                            self.assertIn(self.server.prefix+'book/'+quote(name), rendered)
+                            with self.request('book/'+quote(name)) as response:
+                                self.assertTrue(response.headers['Content-Type'].startswith(kind))
+                        self.assertIn(self.server.prefix+'book/index.htm#back', rendered)
+                        with self.request('book/index.htm') as response:
+                            self.assertIn(self.server.prefix+'book/'+quote(page.lstrip('/')),
+                                          response.read().decode('utf-8'))
+                        for query in ['電腦','电脑']:
+                            with self.request('api/search?q='+quote(query)) as response:
+                                self.assertEqual(json.load(response), expected_search)
+
+    def test_browser_path_is_decoded_once_without_reparsing_filename(self):
+        with tempfile.TemporaryDirectory() as folder:
+            files = fixture_files('utf-8','UTF-8')
+            pages = {'/literal%20name.htm':'literal-percent', '/literal name.htm':'space',
+                     '/中文#章?節.htm':'reserved-characters'}
+            for name, marker in pages.items():
+                files[name] = ('<meta charset="utf-8"><body>'+marker+'</body>').encode('utf-8')
+            path = Path(folder) / 'url-boundary.chm'
+            write_chm(path, files, 65001)
+            self.server.replace(path, 'utf-8')
+            for name, marker in pages.items():
+                with self.subTest(name=name):
+                    with self.request('book/'+quote(name.lstrip('/'))) as response:
+                        self.assertIn(marker, response.read().decode('utf-8'))
+
+    def test_invalid_utf8_browser_path_is_rejected(self):
+        with self.assertRaises(HTTPError) as caught:
+            self.request('book/%FF.htm')
+        with caught.exception as response:
+            self.assertEqual(response.code,400)
+
     def test_lzx_archive_cache_is_reused_when_switching_encoding(self):
         server = ReaderServer(FIXTURES / '測試 LZX GBK.chm')
         self.addCleanup(server.server_close)
