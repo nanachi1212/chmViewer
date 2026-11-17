@@ -179,16 +179,12 @@ class Archive:
             raise ValueError('此 CHM 使用 LZX 壓縮，請先安裝 7-Zip（本程式不會下載執行檔）。')
         self._temporary = tempfile.TemporaryDirectory(prefix='chm-')
         self._aliased = Path(self._temporary.name) / 'book.chm'
-        self._extract_dir = Path(self._temporary.name) / 'extracted'
-        self._aliases = {}
-        entries = []
-        for index, entry in enumerate(self.raw.values()):
-            if entry.section == 1:
-                # 原始 bytes 索引保留在 Python；只有副本使用 ASCII 名稱。
-                alias = f'/r{index:08x}'.encode('ascii')
-                self._aliases[entry.raw_name] = alias[1:].decode('ascii')
-                entry = Entry(alias, entry.section, entry.offset, entry.size)
-            entries.append(entry)
+        compressed = [entry for entry in self.raw.values() if entry.section == 1]
+        self._stream_size = max(entry.offset + entry.size for entry in compressed)
+        self._stream_name = '__chm_stream_' + uuid.uuid4().hex
+        # 讓 7-Zip 一次輸出 LZX 位元組區段，依原始 offset 切回各檔，避免逐檔落地／讀回。
+        entries = [entry for entry in self.raw.values() if entry.section != 1]
+        entries.append(Entry(('/' + self._stream_name).encode('ascii'), 1, 0, self._stream_size))
         self._aliased.write_bytes(wrap_archive(entries, self.data[self.content_offset:], self.lcid))
         self._tool = tool
 
@@ -203,21 +199,19 @@ class Archive:
             if self._temporary is None:
                 self._prepare_compressed()
             if not self._cache:
-                result = subprocess.run([self._tool, 'x', '-y', '-spd',
-                                         '-o' + str(self._extract_dir), str(self._aliased)],
+                result = subprocess.run([self._tool, 'x', '-y', '-spd', '-so',
+                                         str(self._aliased), self._stream_name],
                                         capture_output=True, timeout=120,
                                         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
                 if result.returncode != 0:
                     detail = result.stderr.decode('utf-8', errors='replace').strip()
                     raise ValueError('7-Zip 無法解壓 CHM：' + detail)
-                for raw_name, alias in self._aliases.items():
-                    compressed_entry = self.raw[raw_name]
-                    extracted = self._extract_dir / alias
-                    if not extracted.is_file() or extracted.stat().st_size != compressed_entry.size:
-                        raise ValueError('7-Zip 無法完整解壓 CHM 頁面：' + alias)
-                    self._cache[raw_name] = extracted.read_bytes()
+                if len(result.stdout) != self._stream_size:
+                    raise ValueError('7-Zip 無法完整解壓 CHM 壓縮區段。')
+                self._cache.update({raw_name: result.stdout[item.offset:item.offset + item.size]
+                                    for raw_name, item in self.raw.items() if item.section == 1})
             if len(self._cache[name]) != entry.size:
-                raise ValueError('7-Zip 無法完整解壓 CHM 頁面：' + self._aliases[name])
+                raise ValueError('7-Zip 無法完整解壓 CHM 頁面。')
         return self._cache[name]
 
     def names(self, override='auto'):

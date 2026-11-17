@@ -26,6 +26,14 @@ def character_map():
 
 CHARACTERS = character_map()
 
+# 只加速索引不使用屬性的普通標籤；rawtext、特殊與寬鬆語法仍由 HTMLParser 處理。
+_TEXT_START_TAG = re.compile(
+    r'<(html|head|body|meta|link|div|span|p|br|hr|a|b|strong|i|em|u|s|font|small|big|'
+    r'sub|sup|h[1-6]|table|tbody|thead|tfoot|tr|td|th|ul|ol|li|dl|dt|dd|img)'
+    r'(?=[\t\n\r\f />])'
+    r'''(?:[\t\n\r\f ]+[a-z_:][a-z0-9_.:-]*(?:[\t\n\r\f ]*=[\t\n\r\f ]*(?:"[^"<]*"|'[^'<]*'|[^\t\n\r\f "'=<>`]+))?)*'''
+    r'[\t\n\r\f ]*(/?)>', re.I | re.ASCII)
+
 
 def normalize(text):
     return text.translate(CHARACTERS)
@@ -37,6 +45,18 @@ class TextParser(HTMLParser):
         self.parts, self.title_parts = [], []
         self.excluded = 0
         self.in_title = False
+
+    def parse_starttag(self, i):
+        match = _TEXT_START_TAG.match(self.rawdata, i)
+        if not match:
+            return super().parse_starttag(i)
+        self._HTMLParser__starttag_text = match.group()
+        self.lasttag = tag = match.group(1).lower()
+        if match.group(2):
+            self.handle_startendtag(tag, [])
+        else:
+            self.handle_starttag(tag, [])
+        return match.end()
 
     def handle_starttag(self, tag, attrs):
         if tag in {'script', 'style'}:
