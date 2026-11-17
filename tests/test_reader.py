@@ -161,11 +161,47 @@ class BookTests(unittest.TestCase):
                                  ('/章節/中文 頁面.htm', ''))
 
     def test_manual_encoding_can_correct_legacy_directory_metadata(self):
-        path = Path(self.temp.name) / 'wrong-lcid.chm'
-        write_chm(path, fixture_files('gbk','GBK'), 0x404, name_encoding='gbk')
+        for lcid in (0x404,65001):
+            with self.subTest(lcid=lcid):
+                path = Path(self.temp.name) / ('wrong-lcid-'+str(lcid)+'.chm')
+                files = fixture_files('gbk','GBK')
+                del files['/#SYSTEM']  # 使用錯誤 header LCID，而非 fixture 的正確 #SYSTEM。
+                write_chm(path, files, lcid, name_encoding='gbk')
+                book = self.book(path, 'gb18030')
+                self.assertIn('/章節/中文 頁面.htm', book.pages)
+                self.assertEqual(book.toc[1]['path'], '/章節/中文 頁面.htm')
+
+    def test_manual_legacy_name_that_is_also_valid_utf8(self):
+        path = Path(self.temp.name) / 'ambiguous-name.chm'
+        legacy = '绔犺妭'  # GBK bytes 同時是 UTF-8 的「章节」。
+        files = fixture_files('gbk','GBK')
+        files['/'+legacy+'/one.htm'] = '<meta charset="gbk"><a href="two.htm">下一頁</a>'.encode('gbk')
+        files['/'+legacy+'/two.htm'] = '<meta charset="gbk"><body>第二頁</body>'.encode('gbk')
+        files['/toc.hhc'] = ('<ul><object type="text/sitemap"><param name="Name" value="章節">'
+                             '<param name="Local" value="'+legacy+'/one.htm"></object></ul>').encode('gbk')
+        write_chm(path, files, name_encoding='gbk')
         book = self.book(path, 'gb18030')
-        self.assertIn('/章節/中文 頁面.htm', book.pages)
-        self.assertEqual(book.toc[1]['path'], '/章節/中文 頁面.htm')
+        first = book.resolve(legacy+'/one.htm')[0]
+        second = book.resolve(legacy+'/two.htm')[0]
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+        self.assertEqual(book.toc[0]['path'], first)
+        self.assertEqual(book.resolve('two.htm', first)[0], second)
+        self.assertIn('/session/book/'+quote(second.lstrip('/')), book.render(first,'/session/').decode())
+
+    def test_manual_gbk_content_with_utf8_percent_links(self):
+        path = Path(self.temp.name) / 'utf8-links.chm'
+        files = fixture_files('gbk','GBK')
+        target = '/章節/中文 頁面.htm'
+        files['/章節/入口.htm'] = ('<meta charset="gbk"><a href="'+quote('中文 頁面.htm')+'">下一頁</a>').encode('gbk')
+        files['/toc.hhc'] = ('<ul><object type="text/sitemap"><param name="Name" value="中文頁面">'
+                             '<param name="Local" value="'+quote(target)+'"></object></ul>').encode('gbk')
+        write_chm(path, files)
+        book = self.book(path, 'gb18030')
+        self.assertEqual(book.toc[0]['path'], target)
+        self.assertEqual(book.resolve(quote('中文 頁面.htm'), '/章節/入口.htm')[0], target)
+        self.assertIn('/session/book/'+quote(target.lstrip('/')),
+                      book.render('/章節/入口.htm','/session/').decode())
 
     def test_without_hhc_lists_all_html(self):
         files=fixture_files('gbk','GBK')

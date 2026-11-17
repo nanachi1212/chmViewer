@@ -219,6 +219,11 @@ class Archive:
         for raw in self.raw:
             # CHM 的 UTF-8 目錄檔名獨立於 HTML 編碼；舊式檔名仍接受手動覆寫。
             name, codec = decode_name(raw, self.hint)
+            if override != 'auto' and codec == 'utf-8':
+                try:
+                    raw.decode('utf-8', errors='strict')
+                except UnicodeDecodeError:
+                    codec = None
             if override != 'auto' and codec != 'utf-8':
                 name, _ = decode_name(raw, self.hint, override)
             names[name] = raw

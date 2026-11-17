@@ -120,13 +120,16 @@ class Book:
             self.override = override
             self.names = self.archive.names(override)
             self.lookup = {self.key(name): name for name in self.names}
-            if override == 'auto':
-                for name, raw in self.names.items():
-                    try:
-                        utf8_name = raw.decode('utf-8', errors='strict')
-                    except UnicodeDecodeError:
-                        continue
+            for name, raw in self.names.items():
+                try:
+                    utf8_name = raw.decode('utf-8', errors='strict')
+                except UnicodeDecodeError:
+                    pass
+                else:
                     self.lookup.setdefault(self.key(utf8_name), name)
+                if override != 'auto':
+                    legacy_name = decode_name(raw, self.archive.hint, override)[0]
+                    self.lookup.setdefault(self.key(legacy_name), name)
             self.pages = {}
             for name in self.names:
                 if name.lower().endswith(('.htm', '.html', '.xhtml')):
@@ -172,11 +175,18 @@ class Book:
             return None, fragment
         # 中文路徑與錨點都只解碼一次，輸出時再統一採 UTF-8 URL 編碼。
         decoded = component(split.path)
-        if not decoded:
-            decoded = base
-        elif not decoded.startswith('/'):
-            decoded = posixpath.join(posixpath.dirname(base), decoded)
-        return self.lookup.get(self.key(decoded)), fragment
+        bases = [base]
+        if self.override != 'auto' and base in self.names:
+            # 相對連結也可能使用原書的舊式目錄名稱，不能只轉換最後一段。
+            bases.append(decode_name(self.names[base], self.archive.hint, self.override)[0])
+        for source_base in bases:
+            path = decoded or source_base
+            if decoded and not decoded.startswith('/'):
+                path = posixpath.join(posixpath.dirname(source_base), decoded)
+            name = self.lookup.get(self.key(path))
+            if name is not None:
+                return name, fragment
+        return None, fragment
 
     def url(self, value, base, prefix):
         name, fragment = self.resolve(value, base)
