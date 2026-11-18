@@ -28,6 +28,7 @@ def build():
             (output / Path(entry).name).write_bytes(archive.read(entry))
     compiler = Path(os.environ['WINDIR']) / 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     subprocess.run([compiler, '/nologo', '/target:winexe', '/platform:x64', '/codepage:65001', '/optimize+',
+                    '/win32icon:' + str(ROOT / 'assets' / 'chmviewer.ico'),
                     '/out:ReaderWindow.exe', *('/reference:' + name for name in assemblies),
                     '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll',
                     ROOT / 'windows' / 'ReaderWindow.cs'], cwd=output, check=True)

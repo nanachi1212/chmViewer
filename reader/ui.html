@@ -4,6 +4,7 @@
 <style>
 *{box-sizing:border-box}body{font:16px "Microsoft JhengHei",sans-serif;color:#263b42;background:#f6f3ed;margin:0;height:100vh;display:flex;flex-direction:column}
 header{padding:14px 20px;background:#526b78;color:white;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand-mark{display:inline-flex;align-items:center;justify-content:center;width:42px;height:30px;border-radius:9px;background:#d9c2b8;color:#314d55;font-size:13px;font-weight:800;letter-spacing:.12em;box-shadow:inset 0 0 0 2px rgba(255,255,255,.26)}
 h1{font-size:19px;margin:0;flex:1;min-width:140px}button,input,select{font:inherit;border:1px solid #b5c0bd;border-radius:6px;padding:8px 11px}
 button{background:#edf1ea;color:#253d38;cursor:pointer}button:hover{background:#d9e3d7}
 form,label{display:flex;gap:6px;align-items:center}input{width:210px}
@@ -20,7 +21,7 @@ iframe{border:0;flex:1;width:100%;background:white}#status{padding:10px 20px;min
 @media(max-width:760px){header{gap:8px;padding:10px}aside{width:230px;min-width:180px}form{width:100%}input{flex:1}}
 [hidden]{display:none!important}
 </style>
-<header><h1 id="booktitle">CHM 閱讀器</h1><button id="open">開啟 CHM</button>
+<header><span class="brand-mark" aria-label="NNC">NNC</span><h1 id="booktitle">CHM 閱讀器</h1><button id="open">開啟 CHM</button>
 <label>編碼<select id="encoding"><option value="auto">自動偵測</option><option value="gb18030">GB18030（含 GBK／GB2312）</option><option value="utf-8">UTF-8</option><option value="cp950">Big5</option></select></label>
 <label>內文字級<select id="fontSize" disabled><option value="100">100%（原始）</option></select></label>
 <form id="search"><input id="query" type="search" aria-label="全文搜尋" placeholder="全文搜尋（繁簡互通）"><button>搜尋</button></form><button id="exit">關閉閱讀器</button></header>

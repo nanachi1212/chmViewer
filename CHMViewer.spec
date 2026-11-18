@@ -13,4 +13,4 @@ app = Analysis(
            (str(Path(sys.base_prefix) / 'LICENSE.txt'), 'Python')],
 )
 exe = EXE(PYZ(app.pure), app.scripts, app.binaries, app.datas, [],
-          name='CHMViewer', console=False, upx=False)
+          name='CHMViewer', icon='assets/chmviewer.ico', console=False, upx=False)

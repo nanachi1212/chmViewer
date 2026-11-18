@@ -2,5 +2,6 @@ OpenCC TSCharacters.txt ver.1.1.9 | https://github.com/BYVoid/OpenCC/tree/ver.1.
 Python 與 tkinter | https://docs.python.org/3/license.html | 可攜版內含 Python 執行環境與 Python/LICENSE.txt；Tcl/Tk 授權見 https://www.tcl-lang.org/software/tcltk/license.html
 7-Zip | https://www.7-zip.org/ | 可攜版內含 Igor Pavlov 的原版 7z.exe 與 7z.dll，用於 CHM/LZX 解壓。7-Zip 主要採用 GNU LGPL 2.1 或更新版本，另含 BSD 與 unRAR 條款。完整聲明隨附於 7-Zip/License.txt；原始碼：https://www.7-zip.org/download.html
 Playwright Python（僅 tests/browser_smoke.py 驗證環境） | https://github.com/microsoft/playwright-python | Apache-2.0 | 本機已安裝；非閱讀器執行依賴，未隨專案散布
+CHMViewer 圖標 | 本專案以 OpenAI image generation 生成並由本專案整合，無外部第三方資產或額外授權要求
 Microsoft Edge（僅本機瀏覽器驗證） | https://www.microsoft.com/edge | Microsoft 軟體授權條款 | 使用本機既有瀏覽器，未隨專案散布
 Microsoft.Web.WebView2 SDK 1.0.4314.35 | https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4314.35 | BSD-3-Clause，完整聲明隨附於 window/LICENSE.txt。可攜版內含 x64 loader 與 .NET Core/WinForms SDK 組件，使用本機的 Evergreen WebView2 Runtime。

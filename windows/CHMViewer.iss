@@ -1,5 +1,5 @@
 #define AppName "CHM 閱讀器"
-#define AppVersion "1.2.0"
+#define AppVersion "1.3.0"
 #define ProgId "CHMViewer.Document"
 
 [Setup]
@@ -15,6 +15,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 ChangesAssociations=yes
+SetupIconFile=..\assets\chmviewer.ico
 UninstallDisplayIcon={app}\CHMViewer.exe
 OutputDir=..\dist
 OutputBaseFilename=CHMViewer-Setup-x64
