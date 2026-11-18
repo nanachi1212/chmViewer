@@ -68,7 +68,7 @@ function applyFontSize(){
 }
 el('fontSize').onchange=async()=>{
  const percent=Number(el('fontSize').value);
- applyFontSize();busy(true);
+ applyFontSize();applyTextSpacing();busy(true);
  try{await api('font-size',{percent});}
  catch(e){status('已套用字級，但無法儲存設定：'+e.message,true);}
  finally{busy(false);}
@@ -76,10 +76,14 @@ el('fontSize').onchange=async()=>{
 function applyTextSpacing(){
  const doc=el('page').contentDocument;if(!doc?.body)return;
  const body=doc.body,previous=originalSpacingStyles.get(doc);
- if(previous!==undefined){if(previous===null)body.removeAttribute('style');else body.setAttribute('style',previous);}
+ if(previous!==undefined){
+  if(previous.value)body.style.setProperty('letter-spacing',previous.value,previous.priority);
+  else body.style.removeProperty('letter-spacing');
+ }
  const spacing=Number(el('textSpacing').value)/100;
  if(!spacing){originalSpacingStyles.delete(doc);return;}
- originalSpacingStyles.set(doc,body.getAttribute('style'));
+ originalSpacingStyles.set(doc,{value:body.style.getPropertyValue('letter-spacing'),
+  priority:body.style.getPropertyPriority('letter-spacing')});
  body.style.setProperty('letter-spacing',spacing+'em','important');
 }
 el('textSpacing').onchange=async()=>{
