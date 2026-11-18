@@ -18,6 +18,7 @@ from reader.book import Book, CHARACTERS
 HTML_TYPES = {'.htm', '.html', '.xhtml'}
 FONT_SIZES = (75, 90, 100, 110, 125, 150, 175, 200)
 TEXT_SPACINGS = (0, 5, 10, 15)
+FONT_FAMILIES = ('original', 'Microsoft JhengHei', 'PMingLiU', 'DFKai-SB')
 TYPES = {'.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
          '.gif': 'image/gif', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon',
          '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf'}
@@ -63,9 +64,13 @@ def choose_file():
         root.destroy()
 
 
-def font_size_file():
+def preference_file(name):
     folder = os.environ.get('LOCALAPPDATA') or os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config'
-    return Path(folder) / 'CHMViewer' / 'font-size.txt'
+    return Path(folder) / 'CHMViewer' / name
+
+
+def font_size_file():
+    return preference_file('font-size.txt')
 
 
 def load_font_size():
@@ -79,20 +84,22 @@ def load_font_size():
 def save_font_size(percent):
     if type(percent) is not int or percent not in FONT_SIZES:
         raise ValueError('不支援此內文字級。')
-    path = font_size_file()
+    write_preference(font_size_file(), str(percent))
+
+
+def write_preference(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temporary:
         name = Path(temporary.name)
     try:
-        name.write_text(str(percent), encoding='ascii')
+        name.write_text(value, encoding='ascii')
         name.replace(path)
     finally:
         name.unlink(missing_ok=True)
 
 
 def text_spacing_file():
-    folder = os.environ.get('LOCALAPPDATA') or os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config'
-    return Path(folder) / 'CHMViewer' / 'text-spacing.txt'
+    return preference_file('text-spacing.txt')
 
 
 def load_text_spacing():
@@ -106,15 +113,15 @@ def load_text_spacing():
 def save_text_spacing(spacing):
     if type(spacing) is not int or spacing not in TEXT_SPACINGS:
         raise ValueError('不支援此文字間距。')
-    path = text_spacing_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temporary:
-        name = Path(temporary.name)
+    write_preference(text_spacing_file(), str(spacing))
+
+
+def load_font_family():
     try:
-        name.write_text(str(spacing), encoding='ascii')
-        name.replace(path)
-    finally:
-        name.unlink(missing_ok=True)
+        family = preference_file('font-family.txt').read_text(encoding='ascii').strip()
+    except (OSError, ValueError):
+        return 'original'
+    return family if family in FONT_FAMILIES else 'original'
 
 
 class ReaderServer(ThreadingHTTPServer):
@@ -197,6 +204,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send({'percent': load_font_size(), 'choices': FONT_SIZES})
                 elif route == 'api/text-spacing':
                     self.send({'percent': load_text_spacing(), 'choices': TEXT_SPACINGS})
+                elif route == 'api/font-family':
+                    self.send({'family': load_font_family(), 'choices': FONT_FAMILIES})
                 elif route == 'api/characters':
                     self.send({chr(key): value for key, value in CHARACTERS.items()})
                 elif route == 'api/search':
@@ -254,6 +263,12 @@ class Handler(BaseHTTPRequestHandler):
                 spacing = data.get('percent') if isinstance(data, dict) else None
                 save_text_spacing(spacing)
                 self.send({'percent': spacing})
+            elif route == 'api/font-family':
+                family = data.get('family') if isinstance(data, dict) else None
+                if family not in FONT_FAMILIES:
+                    raise ValueError('不支援此內文字體。')
+                write_preference(preference_file('font-family.txt'), family)
+                self.send({'family': family})
             elif route == 'api/encoding':
                 encoding = data.get('encoding')
                 if encoding not in {'auto', 'gb18030', 'utf-8', 'cp950'}:

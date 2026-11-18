@@ -56,6 +56,8 @@ def main():
                             open_time = time.perf_counter() - started
                             title = frame.locator('#winchm_template_content strong').first
                             size = lambda node: node.evaluate('n=>parseFloat(getComputedStyle(n).fontSize)')
+                            assert page.locator('#fontFamily').input_value() == 'PMingLiU'
+                            assert 'PMingLiU' in title.evaluate('n=>getComputedStyle(n).fontFamily')
                             assert page.locator('#fontSize').input_value() == '150'
                             large_size = size(title)
                             page.locator('#fontSize').select_option('100')
@@ -117,11 +119,17 @@ def main():
                         color=frame.locator('body').evaluate('(body)=>getComputedStyle(body).color')
                         assert color=='rgb(31, 61, 46)',color
                         font = page.get_by_label('內文字級')
+                        family = page.get_by_label('內文字體')
+                        spacing = page.get_by_label('文字間距')
                         assert font.input_value() == ('100' if number==0 else '150')
+                        assert family.input_value() == ('original' if number==0 else 'PMingLiU')
                         font.select_option('100')
+                        family.select_option('original')
+                        spacing.select_option('0')
                         hit = frame.locator('#hit')
                         hit.evaluate("""node=>{
                             node.style.setProperty('font-size','18px','important');
+                            node.style.setProperty('font-family','serif','important');
                             node.style.lineHeight='24px';
                             node.querySelector('b').style.fontSize='1.5em';
                         }""")
@@ -134,12 +142,23 @@ def main():
                             assert sizes == [n*percent/100 for n in (18,24,27)], (percent,sizes)
                             assert frame.locator('img').bounding_box()['width'] == image_width
                         assert hit.get_attribute('style') == original_style
+                        family.select_option('DFKai-SB')
+                        assert 'DFKai-SB' in hit.evaluate('n=>getComputedStyle(n).fontFamily')
+                        spacing.select_option('10')
                         font.select_option('150')
+                        assert hit.evaluate("""n=>[getComputedStyle(n).fontFamily.includes('DFKai-SB'),
+                            getComputedStyle(n).fontSize, getComputedStyle(n).letterSpacing]""") == [True, '27px', '3px']
+                        family.select_option('original')
+                        assert hit.evaluate('n=>getComputedStyle(n).fontFamily') == 'serif'
+                        assert hit.evaluate('n=>getComputedStyle(n).fontSize') == '27px'
+                        family.select_option('PMingLiU')
+                        spacing.select_option('0')
                         frame.get_by_text('返回首頁',exact=True).click()
                         frame.locator('#back').wait_for()
                         frame.get_by_text('開啟中文頁面',exact=True).click()
                         frame.locator('#hit').wait_for()
                         assert frame.locator('#hit').evaluate('n=>getComputedStyle(n).fontSize') == '30px'
+                        assert 'PMingLiU' in frame.locator('#hit').evaluate('n=>getComputedStyle(n).fontFamily')
                         page.locator('#query').fill('電腦')
                         page.locator('#search button').click()
                         page.locator('#matches button').wait_for()
@@ -148,6 +167,7 @@ def main():
                         frame.locator('mark[data-chm-hit]').first.wait_for()
                         assert frame.locator('mark[data-chm-hit]').count()==4
                         assert frame.locator('mark[data-chm-hit]').last.evaluate('n=>getComputedStyle(n).fontSize') == '30px'
+                        assert 'PMingLiU' in frame.locator('mark[data-chm-hit]').first.evaluate('n=>getComputedStyle(n).fontFamily')
                         assert '3 處' in page.locator('#status').inner_text()
                         # 長頁面尾端的跨節點命中，必須真的捲動。
                         page.locator('#query').fill('跨標籤：電腦')

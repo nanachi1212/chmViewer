@@ -1,5 +1,5 @@
 #define AppName "CHM 閱讀器"
-#define AppVersion "1.3.5"
+#define AppVersion "1.3.6"
 #define ProgId "CHMViewer.Document"
 
 [Setup]

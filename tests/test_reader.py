@@ -403,6 +403,26 @@ class HTTPTests(unittest.TestCase):
                 with self.request('api/text-spacing') as response:
                     self.assertEqual(json.load(response)['percent'], 0)
 
+    def test_font_family_preference(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = Path(directory) / 'font-family.txt'
+            with patch('app.preference_file', return_value=settings):
+                with self.request('api/font-family') as response:
+                    self.assertEqual(json.load(response)['family'], 'original')
+                self.assertFalse(settings.exists())
+                with self.request('api/font-family', {'family': 'PMingLiU'}) as response:
+                    self.assertEqual(json.load(response)['family'], 'PMingLiU')
+                for invalid in ['unknown', True, ['PMingLiU']]:
+                    with self.assertRaises(HTTPError) as error:
+                        self.request('api/font-family', {'family': invalid})
+                    self.assertEqual(error.exception.code, 400)
+                    error.exception.close()
+                with self.request('api/font-family') as response:
+                    self.assertEqual(json.load(response)['family'], 'PMingLiU')
+                settings.write_text('unknown', encoding='ascii')
+                with self.request('api/font-family') as response:
+                    self.assertEqual(json.load(response)['family'], 'original')
+
     def test_manual_encoding_preserves_browser_links_assets_and_search(self):
         with tempfile.TemporaryDirectory() as folder:
             for codec, label, override, lcid in [('gbk','GBK','gb18030',0x804),
