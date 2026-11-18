@@ -25,6 +25,10 @@ internal sealed class ReaderWindow : Form
     private ReaderWindow(string url, string profile)
     {
         Text = "CHM 閱讀器";
+        // WinForms 不一定會自動使用 PE 的 Win32 icon；明確指定，讓標題列與工作列
+        // 都使用與主程式、檔案關聯相同的莫蘭迪 NNC 圖標。
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+        catch (Exception) { /* 若系統無法讀取資源，仍可正常閱讀。 */ }
         ClientSize = new Size(1200, 800);
         StartPosition = FormStartPosition.CenterScreen;
         var view = new WebView2 { Dock = DockStyle.Fill };
