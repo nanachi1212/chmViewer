@@ -7,6 +7,7 @@ from pathlib import Path
 import queue
 import secrets
 import sys
+import tempfile
 import threading
 from urllib.parse import parse_qs, unquote, urlsplit
 import webbrowser
@@ -15,6 +16,7 @@ from reader.archive import ROOT
 from reader.book import Book, CHARACTERS
 
 HTML_TYPES = {'.htm', '.html', '.xhtml'}
+FONT_SIZES = (75, 90, 100, 110, 125, 150, 175, 200)
 TYPES = {'.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
          '.gif': 'image/gif', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon',
          '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf'}
@@ -58,6 +60,33 @@ def choose_file():
                                          filetypes=[('CHM 電子書', '*.chm')])
     finally:
         root.destroy()
+
+
+def font_size_file():
+    folder = os.environ.get('LOCALAPPDATA') or os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config'
+    return Path(folder) / 'CHMViewer' / 'font-size.txt'
+
+
+def load_font_size():
+    try:
+        percent = int(font_size_file().read_text(encoding='ascii'))
+    except (OSError, ValueError):
+        return 100
+    return percent if percent in FONT_SIZES else 100
+
+
+def save_font_size(percent):
+    if type(percent) is not int or percent not in FONT_SIZES:
+        raise ValueError('不支援此內文字級。')
+    path = font_size_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temporary:
+        name = Path(temporary.name)
+    try:
+        name.write_text(str(percent), encoding='ascii')
+        name.replace(path)
+    finally:
+        name.unlink(missing_ok=True)
 
 
 class ReaderServer(ThreadingHTTPServer):
@@ -136,6 +165,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send((ROOT / 'reader' / 'ui.html').read_bytes(), 'text/html; charset=utf-8')
                 elif route == 'api/book':
                     self.send(server.metadata())
+                elif route == 'api/font-size':
+                    self.send({'percent': load_font_size(), 'choices': FONT_SIZES})
                 elif route == 'api/characters':
                     self.send({chr(key): value for key, value in CHARACTERS.items()})
                 elif route == 'api/search':
@@ -185,6 +216,10 @@ class Handler(BaseHTTPRequestHandler):
                     if path:
                         server.replace(path)
                     self.send(server.metadata())
+            elif route == 'api/font-size':
+                percent = data.get('percent') if isinstance(data, dict) else None
+                save_font_size(percent)
+                self.send({'percent': percent})
             elif route == 'api/encoding':
                 encoding = data.get('encoding')
                 if encoding not in {'auto', 'gb18030', 'utf-8', 'cp950'}:

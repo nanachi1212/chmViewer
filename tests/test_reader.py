@@ -363,6 +363,25 @@ class HTTPTests(unittest.TestCase):
         with self.request('api/search?q='+quote('電腦')) as response:
             self.assertEqual(json.load(response)[0]['count'],3)
 
+    def test_font_size_default_save_and_invalid_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = Path(directory) / 'prefs' / 'font-size.txt'
+            with patch('app.font_size_file', return_value=settings):
+                with self.request('api/font-size') as response:
+                    self.assertEqual(json.load(response)['percent'], 100)
+                self.assertFalse(settings.exists())
+                with self.request('api/font-size', {'percent': 150}) as response:
+                    self.assertEqual(json.load(response)['percent'], 150)
+                for invalid in [0, '150', True]:
+                    with self.assertRaises(HTTPError) as error:
+                        self.request('api/font-size', {'percent': invalid})
+                    self.assertEqual(error.exception.code, 400)
+                    error.exception.close()
+                self.assertEqual(settings.read_text(), '150')
+                settings.write_text('bad')
+                with self.request('api/font-size') as response:
+                    self.assertEqual(json.load(response)['percent'], 100)
+
     def test_manual_encoding_preserves_browser_links_assets_and_search(self):
         with tempfile.TemporaryDirectory() as folder:
             for codec, label, override, lcid in [('gbk','GBK','gb18030',0x804),

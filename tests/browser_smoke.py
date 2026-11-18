@@ -1,10 +1,12 @@
 """真實 Edge DOM／截圖驗證；僅驗證環境需已有 Playwright，應用程式不依賴它。"""
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 import time
+from unittest.mock import patch
 
 from playwright.sync_api import sync_playwright
 
@@ -29,15 +31,16 @@ def main():
                 fixtures = sorted(FIXTURES.glob('*.chm'))
                 if args.htw:
                     fixtures.append(args.htw)
-                for fixture in fixtures:
+                for number,fixture in enumerate(fixtures):
                     ready=Path(temporary)/'ready.json'
                     ready.unlink(missing_ok=True)
                     started = time.perf_counter()
-                    if args.exe:
-                        process = subprocess.Popen([args.exe.resolve(), fixture, '--no-browser', '--ready-file', ready],
-                                                   cwd=temporary, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                    else:
-                        process=launch(fixture,ready)
+                    with patch.dict(os.environ, LOCALAPPDATA=str(Path(temporary) / 'reader-settings')):
+                        if args.exe:
+                            process = subprocess.Popen([args.exe.resolve(), fixture, '--no-browser', '--ready-file', ready],
+                                                       cwd=temporary, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                        else:
+                            process=launch(fixture,ready)
                     info=None
                     page=None
                     try:
@@ -51,6 +54,12 @@ def main():
                             frame.locator('#winchm_template_content').get_by_text('零：简介', exact=True).first.wait_for()
                             assert '欢迎来到主神空间' in frame.locator('body').inner_text()
                             open_time = time.perf_counter() - started
+                            title = frame.locator('#winchm_template_content strong').first
+                            size = lambda node: node.evaluate('n=>parseFloat(getComputedStyle(n).fontSize)')
+                            assert page.locator('#fontSize').input_value() == '150'
+                            large_size = size(title)
+                            page.locator('#fontSize').select_option('100')
+                            assert abs(large_size - size(title) * 1.5) < 0.02
                             assert page.locator('#toc .toc-page').count() == 4713
                             assert page.locator('#toc .toc-row:visible').count() == 6
                             rules = page.get_by_role('button', name='基础规则', exact=True)
@@ -107,10 +116,30 @@ def main():
                         assert frame.locator('img').evaluate('(img)=>img.complete && img.naturalWidth===80')
                         color=frame.locator('body').evaluate('(body)=>getComputedStyle(body).color')
                         assert color=='rgb(31, 61, 46)',color
+                        font = page.get_by_label('內文字級')
+                        assert font.input_value() == ('100' if number==0 else '150')
+                        font.select_option('100')
+                        hit = frame.locator('#hit')
+                        hit.evaluate("""node=>{
+                            node.style.setProperty('font-size','18px','important');
+                            node.style.lineHeight='24px';
+                            node.querySelector('b').style.fontSize='1.5em';
+                        }""")
+                        original_style = hit.get_attribute('style')
+                        image_width = frame.locator('img').bounding_box()['width']
+                        for percent in (200,75,125,100):
+                            font.select_option(str(percent))
+                            sizes = hit.evaluate("""n=>[getComputedStyle(n).fontSize,getComputedStyle(n).lineHeight,
+                                getComputedStyle(n.querySelector('b')).fontSize].map(v=>parseFloat(v))""")
+                            assert sizes == [n*percent/100 for n in (18,24,27)], (percent,sizes)
+                            assert frame.locator('img').bounding_box()['width'] == image_width
+                        assert hit.get_attribute('style') == original_style
+                        font.select_option('150')
                         frame.get_by_text('返回首頁',exact=True).click()
                         frame.locator('#back').wait_for()
                         frame.get_by_text('開啟中文頁面',exact=True).click()
                         frame.locator('#hit').wait_for()
+                        assert frame.locator('#hit').evaluate('n=>getComputedStyle(n).fontSize') == '30px'
                         page.locator('#query').fill('電腦')
                         page.locator('#search button').click()
                         page.locator('#matches button').wait_for()
@@ -118,6 +147,7 @@ def main():
                         page.locator('#matches button').first.click()
                         frame.locator('mark[data-chm-hit]').first.wait_for()
                         assert frame.locator('mark[data-chm-hit]').count()==4
+                        assert frame.locator('mark[data-chm-hit]').last.evaluate('n=>getComputedStyle(n).fontSize') == '30px'
                         assert '3 處' in page.locator('#status').inner_text()
                         # 長頁面尾端的跨節點命中，必須真的捲動。
                         page.locator('#query').fill('跨標籤：電腦')
