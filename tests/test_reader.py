@@ -382,6 +382,27 @@ class HTTPTests(unittest.TestCase):
                 with self.request('api/font-size') as response:
                     self.assertEqual(json.load(response)['percent'], 100)
 
+    def test_text_spacing_default_save_and_invalid_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = Path(directory) / 'prefs' / 'text-spacing.txt'
+            with patch('app.text_spacing_file', return_value=settings):
+                with self.request('api/text-spacing') as response:
+                    payload = json.load(response)
+                self.assertEqual(payload['percent'], 0)
+                self.assertEqual(payload['choices'], [0, 5, 10, 15])
+                self.assertFalse(settings.exists())
+                with self.request('api/text-spacing', {'percent': 10}) as response:
+                    self.assertEqual(json.load(response)['percent'], 10)
+                for invalid in [-1, 20, '10', True]:
+                    with self.assertRaises(HTTPError) as error:
+                        self.request('api/text-spacing', {'percent': invalid})
+                    self.assertEqual(error.exception.code, 400)
+                    error.exception.close()
+                self.assertEqual(settings.read_text(), '10')
+                settings.write_text('bad')
+                with self.request('api/text-spacing') as response:
+                    self.assertEqual(json.load(response)['percent'], 0)
+
     def test_manual_encoding_preserves_browser_links_assets_and_search(self):
         with tempfile.TemporaryDirectory() as folder:
             for codec, label, override, lcid in [('gbk','GBK','gb18030',0x804),

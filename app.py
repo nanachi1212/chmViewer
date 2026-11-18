@@ -17,6 +17,7 @@ from reader.book import Book, CHARACTERS
 
 HTML_TYPES = {'.htm', '.html', '.xhtml'}
 FONT_SIZES = (75, 90, 100, 110, 125, 150, 175, 200)
+TEXT_SPACINGS = (0, 5, 10, 15)
 TYPES = {'.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
          '.gif': 'image/gif', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon',
          '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf'}
@@ -84,6 +85,33 @@ def save_font_size(percent):
         name = Path(temporary.name)
     try:
         name.write_text(str(percent), encoding='ascii')
+        name.replace(path)
+    finally:
+        name.unlink(missing_ok=True)
+
+
+def text_spacing_file():
+    folder = os.environ.get('LOCALAPPDATA') or os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config'
+    return Path(folder) / 'CHMViewer' / 'text-spacing.txt'
+
+
+def load_text_spacing():
+    try:
+        spacing = int(text_spacing_file().read_text(encoding='ascii'))
+    except (OSError, ValueError):
+        return 0
+    return spacing if spacing in TEXT_SPACINGS else 0
+
+
+def save_text_spacing(spacing):
+    if type(spacing) is not int or spacing not in TEXT_SPACINGS:
+        raise ValueError('不支援此文字間距。')
+    path = text_spacing_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temporary:
+        name = Path(temporary.name)
+    try:
+        name.write_text(str(spacing), encoding='ascii')
         name.replace(path)
     finally:
         name.unlink(missing_ok=True)
@@ -167,6 +195,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(server.metadata())
                 elif route == 'api/font-size':
                     self.send({'percent': load_font_size(), 'choices': FONT_SIZES})
+                elif route == 'api/text-spacing':
+                    self.send({'percent': load_text_spacing(), 'choices': TEXT_SPACINGS})
                 elif route == 'api/characters':
                     self.send({chr(key): value for key, value in CHARACTERS.items()})
                 elif route == 'api/search':
@@ -220,6 +250,10 @@ class Handler(BaseHTTPRequestHandler):
                 percent = data.get('percent') if isinstance(data, dict) else None
                 save_font_size(percent)
                 self.send({'percent': percent})
+            elif route == 'api/text-spacing':
+                spacing = data.get('percent') if isinstance(data, dict) else None
+                save_text_spacing(spacing)
+                self.send({'percent': spacing})
             elif route == 'api/encoding':
                 encoding = data.get('encoding')
                 if encoding not in {'auto', 'gb18030', 'utf-8', 'cp950'}:

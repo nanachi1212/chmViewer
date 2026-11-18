@@ -5,6 +5,7 @@
 - **Windows x64 可攜版**：[下載最新版 CHMViewer.exe](https://github.com/nanachi1212/chmViewer/releases/latest/download/CHMViewer.exe)。雙擊後按「開啟 CHM」選書，也可以直接把 CHM 檔拖到 EXE 上。Python 和 7-Zip 解壓元件已內附。
 - **目錄與結束搜尋**：目錄預設收合。點章節箭頭展開或收合，點頁名閱讀。「返回完整目錄」或清空搜尋框會保留目前閱讀頁及目錄展開狀態。
 - **內文字級**：工具列可選 75% 至 200%，選「100%（原始）」還原原書排版。換頁、開另一本書及下次啟動時會沿用字級。
+- **文字間距**：工具列可選標準、5%、10% 或 15% 寬鬆字距；設定會保存到下次啟動。
 - **設定保存位置**：安裝版與可攜版共用目前 Windows 使用者的 `%LOCALAPPDATA%\CHMViewer\font-size.txt`。更新或解除安裝程式會保留此設定。
 - **NNC 識別與圖標**：閱讀器頁首顯示 NNC 識別標記；Windows 主程式、原生閱讀視窗、安裝程式與 `.chm` 關聯共用 `assets\chmviewer.ico` 的莫蘭迪開書圖標。
 - **關閉視窗**：可攜版使用 Windows 11 內建的 Microsoft Edge WebView2 Runtime 顯示獨立閱讀視窗。按「關閉閱讀器」或視窗右上角 × 都會結束該視窗與背景閱讀程式。

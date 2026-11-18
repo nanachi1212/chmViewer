@@ -23,7 +23,7 @@ iframe{border:0;flex:1;width:100%;background:white}#status{padding:10px 20px;min
 </style>
 <header><span class="brand-mark" aria-label="NNC">NNC</span><h1 id="booktitle">CHM 閱讀器</h1><button id="open">開啟 CHM</button>
 <label>編碼<select id="encoding"><option value="auto">自動偵測</option><option value="gb18030">GB18030（含 GBK／GB2312）</option><option value="utf-8">UTF-8</option><option value="cp950">Big5</option></select></label>
-<label>內文字級<select id="fontSize" disabled><option value="100">100%（原始）</option></select></label>
+<label>內文字級<select id="fontSize" disabled><option value="100">100%（原始）</option></select></label><label>文字間距<select id="textSpacing" disabled><option value="0">標準</option></select></label>
 <form id="search"><input id="query" type="search" aria-label="全文搜尋" placeholder="全文搜尋（繁簡互通）"><button>搜尋</button></form><button id="exit">關閉閱讀器</button></header>
 <main><aside><button id="backToToc" hidden>← 返回完整目錄</button><section id="results" hidden><h2 id="resultcount">搜尋結果</h2><div id="matches"></div><button id="more" hidden>顯示更多結果</button></section><section id="contents"><h2>目錄</h2><nav id="toc" aria-label="電子書目錄"></nav></section></aside>
 <section id="reading"><div id="pageinfo">尚未開啟電子書</div><div id="empty">按「開啟 CHM」選擇電子書，或將 CHM 檔拖到 CHMViewer.exe。</div><iframe id="page" title="電子書內文" sandbox="allow-same-origin" hidden></iframe></section></main>
@@ -40,6 +40,7 @@ async function api(path,data){
 }
 function normalize(text){return Array.from(text,c=>characters[c]||c).join('');}
 const originalStyles=new WeakMap();
+const originalSpacingStyles=new WeakMap();
 function applyFontSize(){
  const doc=el('page').contentDocument;
  if(!doc?.body)return;
@@ -70,6 +71,22 @@ el('fontSize').onchange=async()=>{
  applyFontSize();busy(true);
  try{await api('font-size',{percent});}
  catch(e){status('已套用字級，但無法儲存設定：'+e.message,true);}
+ finally{busy(false);}
+};
+function applyTextSpacing(){
+ const doc=el('page').contentDocument;if(!doc?.body)return;
+ const body=doc.body,previous=originalSpacingStyles.get(doc);
+ if(previous!==undefined){if(previous===null)body.removeAttribute('style');else body.setAttribute('style',previous);}
+ const spacing=Number(el('textSpacing').value)/100;
+ if(!spacing){originalSpacingStyles.delete(doc);return;}
+ originalSpacingStyles.set(doc,body.getAttribute('style'));
+ body.style.setProperty('letter-spacing',spacing+'em','important');
+}
+el('textSpacing').onchange=async()=>{
+ const percent=Number(el('textSpacing').value);
+ applyTextSpacing();busy(true);
+ try{await api('text-spacing',{percent});}
+ catch(e){status('已套用文字間距，但無法儲存設定：'+e.message,true);}
  finally{busy(false);}
 };
 function openPage(path,fragment=''){
@@ -138,7 +155,7 @@ function highlight(){
  const first=doc.querySelector('mark[data-chm-hit]');if(first)first.scrollIntoView({block:'center'});
  status(count?'本頁找到 '+count+' 處，已標示並捲動到第一處。':'本頁沒有符合的文字。');
 }
-el('page').addEventListener('load',()=>{const doc=el('page').contentDocument;if(doc){el('pageinfo').textContent=doc.title||currentPath;applyFontSize();highlight();}});
+el('page').addEventListener('load',()=>{const doc=el('page').contentDocument;if(doc){el('pageinfo').textContent=doc.title||currentPath;applyFontSize();applyTextSpacing();highlight();}});
 el('open').onclick=async()=>{
  const previousStatus=el('status').textContent,previousError=el('status').className==='error';
  busy(true);status('請在檔案對話框選擇 CHM…');
@@ -166,9 +183,11 @@ el('search').onsubmit=async event=>{
 };
 el('exit').onclick=async()=>{el('exit').disabled=true;try{await api('exit',{});window.close();status('閱讀器已結束。');}catch(e){el('exit').disabled=false;status(e.message,true);}};
 (async()=>{try{
- const [map,book,font]=await Promise.all([api('characters'),api('book'),api('font-size')]);
+ const [map,book,font,spacing]=await Promise.all([api('characters'),api('book'),api('font-size'),api('text-spacing')]);
  characters=map;
  el('fontSize').replaceChildren(...font.choices.map(n=>new Option(n===100?'100%（原始）':n+'%',String(n))));
- el('fontSize').value=String(font.percent);el('fontSize').disabled=false;showBook(book);
+ el('fontSize').value=String(font.percent);el('fontSize').disabled=false;
+ el('textSpacing').replaceChildren(...spacing.choices.map(n=>new Option(n===0?'標準':n+'% 寬鬆',String(n))));
+ el('textSpacing').value=String(spacing.percent);el('textSpacing').disabled=false;showBook(book);
 }catch(e){status(e.message,true);}})();
 </script></html>
