@@ -14,9 +14,14 @@ from reader.archive import ROOT
 from tests.fixtures import FIXTURES, generate
 
 
+def cmd_line(*args):
+    # cmd /s /c 會移除最外層的一對引號，裡面的路徑仍要各自加引號。
+    command = subprocess.list2cmdline([str(ROOT/'開啟.cmd'), *map(str, args)])
+    return f'"{os.environ.get("COMSPEC","cmd.exe")}" /d /s /c "{command}"'
+
+
 def launch(fixture, ready):
-    return subprocess.Popen([os.environ.get('COMSPEC','cmd.exe'),'/d','/c',
-                             str(ROOT/'開啟.cmd'),str(fixture),'--no-browser','--ready-file',str(ready)],
+    return subprocess.Popen(cmd_line(fixture,'--no-browser','--ready-file',ready),
                             cwd=ROOT.parent,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                             creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
 
@@ -130,8 +135,7 @@ class LauncherTests(unittest.TestCase):
     def test_cmd_without_argument_opens_empty_reader(self):
         with tempfile.TemporaryDirectory() as temporary:
             ready=Path(temporary)/'ready.json'
-            process=subprocess.Popen([os.environ.get('COMSPEC','cmd.exe'),'/d','/c',str(ROOT/'開啟.cmd'),
-                                      '--no-browser','--ready-file',str(ready)],cwd=ROOT.parent,
+            process=subprocess.Popen(cmd_line('--no-browser','--ready-file',ready),cwd=ROOT.parent,
                                      stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                                      creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             info=None
@@ -146,8 +150,7 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(process.returncode,0,output.decode('utf-8',errors='replace'))
 
     def test_cmd_failure_chinese_message_and_nonzero_exit(self):
-        result=subprocess.run([os.environ.get('COMSPEC','cmd.exe'),'/d','/c',str(ROOT/'開啟.cmd'),
-                               str(ROOT/'tests'/'不存在 空白.chm'),'--no-browser'],
+        result=subprocess.run(cmd_line(ROOT/'tests'/'不存在 空白.chm','--no-browser'),
                               input=b'\n',capture_output=True,cwd=ROOT.parent,timeout=10,
                               creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         output=(result.stdout+result.stderr).decode('utf-8',errors='strict')

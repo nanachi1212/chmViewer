@@ -51,7 +51,7 @@ class ArchiveStreamTests(unittest.TestCase):
                             returncode=0, stdout=output, stderr=b'')):
                         with self.assertRaisesRegex(ValueError, '無法完整解壓'):
                             archive.read_raw(b'/a-first.bin')
-                    self.assertEqual(archive._cache, {})
+                    self.assertIsNone(archive._stream)
                 finally:
                     archive.close()
 
@@ -62,7 +62,7 @@ class ArchiveStreamTests(unittest.TestCase):
         self.addCleanup(archive.close)
         with self.assertRaisesRegex(ValueError, '無法解壓'):
             archive.read_raw(b'/out-of-range.bin')
-        self.assertEqual(archive._cache, {})
+        self.assertIsNone(archive._stream)
 
 
 if __name__ == '__main__':

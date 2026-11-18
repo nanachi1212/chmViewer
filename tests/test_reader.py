@@ -49,6 +49,10 @@ class EncodingTests(unittest.TestCase):
         self.assertEqual(decode_text(data, 'cp950')[1], 'cp950')
         self.assertEqual(decode_text(data, 'cp950', 'utf-8')[0], '电脑')
 
+    def test_unmarked_utf8_page_in_big5_book(self):
+        data = '<p>繁體與𠀀</p>'.encode('utf-8')
+        self.assertEqual(decode_text(data, 'cp950', document=True), (data.decode(), 'utf-8'))
+
     def test_utf8_then_gb18030_fallback(self):
         for text, codec in [('電腦𠀀', 'utf-8'), ('电脑𠀀', 'gb18030')]:
             self.assertEqual(decode_text(text.encode(codec))[0], text)
@@ -82,8 +86,8 @@ class BookTests(unittest.TestCase):
         self.addCleanup(book.close)
         return book
 
-    def test_four_real_chm_fixtures_and_bidirectional_search(self):
-        for label in ['GBK','GB18030','UTF-8','Big5']:
+    def test_five_real_chm_fixtures_and_bidirectional_search(self):
+        for label in ['GB2312','GBK','GB18030','UTF-8','Big5']:
             with self.subTest(label=label):
                 book = self.book(FIXTURES / ('測試 '+label+'.chm'))
                 self.assertEqual(len(book.pages),2)
@@ -426,11 +430,11 @@ class HTTPTests(unittest.TestCase):
         self.addCleanup(server.close_book)
         old = server.book
         archive = old.archive
-        cache = archive._cache
+        cache = archive._stream
         self.assertTrue(cache)
         server.replace(FIXTURES / '測試 LZX GBK.chm', 'gb18030')
         self.assertIs(server.book.archive, archive)
-        self.assertIs(server.book.archive._cache, cache)
+        self.assertIs(server.book.archive._stream, cache)
         self.assertFalse(old._owns_archive)
         self.assertTrue(server.book._owns_archive)
 

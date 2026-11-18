@@ -21,7 +21,7 @@ def fixture_files(codec, label):
     title = '電腦與程式設計' if traditional else '电脑与程序设计'
     extra = '𠀀' if codec == 'gb18030' else ''
     local = '章節/中文 頁面.htm'
-    charset = {'gbk': 'gb2312', 'gb18030': 'gbk', 'cp950': 'big5', 'utf-8': 'utf-8'}[codec]
+    charset = {'gb2312': 'gb2312', 'gbk': 'gb2312', 'gb18030': 'gbk', 'cp950': 'big5', 'utf-8': 'utf-8'}[codec]
     html = ('<html><head><meta http-equiv="Content-Type" content="text/html; charset='+charset+'">'
             '<title>'+title+'</title><link rel="stylesheet" href="../樣式.css"></head><body>'
             '<h1>'+title+'</h1><p>歡迎閱讀 '+label+'。</p>'
@@ -38,11 +38,13 @@ def fixture_files(codec, label):
     home = ('<html><head><meta charset="'+charset+'"><title>測試首頁 '+label+'</title></head>'
             '<body><h1 id="back">測試首頁 '+label+'</h1><a href="'+local+'">開啟中文頁面</a>'
             '<a href="/'+local+'">根目錄連結</a></body></html>')
-    records = {0: b'toc.hhc\0', 2: b'index.htm\0', 3: ('測試書籍 '+label).encode(codec)+b'\0',
+    book_title = ('测试书籍 ' if codec == 'gb2312' else '測試書籍 ') + label
+    records = {0: b'toc.hhc\0', 2: b'index.htm\0', 3: book_title.encode(codec)+b'\0',
                4: struct.pack('<I', 0x404 if traditional else (65001 if codec == 'utf-8' else 0x804))+bytes(24)}
     system = struct.pack('<I', 3)+b''.join(struct.pack('<HH', kind, len(data))+data for kind,data in records.items())
-    return {'/#SYSTEM': system, '/toc.hhc': toc.encode(codec), '/index.htm': home.encode(codec),
-            '/'+local: html.encode(codec), '/樣式.css': '@charset "UTF-8"; body{color:rgb(31,61,46);font-size:20px}'.encode('utf-8'),
+    return {'/#SYSTEM': system, '/toc.hhc': toc.encode(codec, 'xmlcharrefreplace'),
+            '/index.htm': home.encode(codec, 'xmlcharrefreplace'),
+            '/'+local: html.encode(codec, 'xmlcharrefreplace'), '/樣式.css': '@charset "UTF-8"; body{color:rgb(31,61,46);font-size:20px}'.encode('utf-8'),
             '/圖片.svg': '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="50"><rect width="80" height="50" fill="#738e79"/></svg>'.encode('utf-8')}
 
 
@@ -78,7 +80,7 @@ def write_lzx_chm(path, files, lcid=0x804, name_encoding='utf-8'):
 
 def generate():
     FIXTURES.mkdir(exist_ok=True)
-    for codec,label in [('gbk','GBK'),('gb18030','GB18030'),('utf-8','UTF-8'),('cp950','Big5')]:
+    for codec,label in [('gb2312','GB2312'),('gbk','GBK'),('gb18030','GB18030'),('utf-8','UTF-8'),('cp950','Big5')]:
         write_chm(FIXTURES / ('測試 '+label+'.chm'), fixture_files(codec,label),
                   0x404 if codec == 'cp950' else (65001 if codec == 'utf-8' else 0x804))
 

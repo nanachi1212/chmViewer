@@ -206,15 +206,23 @@ def run(args):
     server = ReaderServer(args.path)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    window = None
     try:
-        print('閱讀器已啟動：' + server.url, flush=True)
+        if sys.stdout is not None:
+            print('閱讀器已啟動：' + server.url, flush=True)
         if args.ready_file:
             Path(args.ready_file).write_text(json.dumps({'url': server.url, 'port': server.server_port, 'pid': os.getpid()},
                                                        ensure_ascii=False), encoding='utf-8')
         if not args.no_browser:
-            if not webbrowser.open(server.url):
-                print('無法自動開啟瀏覽器，請開啟上方網址。', flush=True)
-        while True:
+            if os.name == 'nt':
+                from reader.window import ReaderWindow, host_path
+                host = host_path()
+                if host.is_file():
+                    window = ReaderWindow(host, server.url)
+            if window is None and not webbrowser.open(server.url):
+                from tkinter import messagebox
+                messagebox.showinfo('CHM 閱讀器', '請在瀏覽器開啟本機網址：\n' + server.url)
+        while window is None or not window.closed():
             try:
                 action, answer = server.actions.get(timeout=0.2)
             except queue.Empty:
@@ -233,6 +241,8 @@ def run(args):
         thread.join()
         server.server_close()
         server.close_book()
+        if window is not None:
+            window.close()
 
 
 def main():
@@ -245,7 +255,11 @@ def main():
         run(args)
         return 0
     except Exception as error:
-        print('啟動失敗：' + str(error), file=sys.stderr, flush=True)
+        if sys.stderr is not None:
+            print('啟動失敗：' + str(error), file=sys.stderr, flush=True)
+        elif not args.no_browser:
+            from tkinter import messagebox
+            messagebox.showerror('CHM 閱讀器', '啟動失敗：' + str(error))
         return 1
 
 

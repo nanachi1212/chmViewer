@@ -117,7 +117,6 @@ class TocParser(HTMLParser):
 
 @dataclass
 class Page:
-    html: str
     title: str
     text: str
     normalized: str
@@ -151,7 +150,7 @@ class Book:
                     parser.feed(html)
                     text = ''.join(parser.parts)
                     title = ''.join(parser.title_parts).strip() or posixpath.basename(name)
-                    self.pages[name] = Page(html, title, text, normalize(text), codec)
+                    self.pages[name] = Page(title, text, normalize(text), codec)
             if not self.pages:
                 raise ValueError('此 CHM 沒有可閱讀的 HTML 頁面。')
             title_data = self.archive.records.get(3, b'').rstrip(b'\0')
@@ -171,7 +170,8 @@ class Book:
         return posixpath.normpath('/' + name.replace('\\', '/').lstrip('/')).casefold()
 
     def decode(self, name):
-        return decode_text(self.archive.read_raw(self.names[name]), self.archive.hint, self.override)
+        return decode_text(self.archive.read_raw(self.names[name]), self.archive.hint, self.override,
+                           document=True)
 
     def resolve(self, value, base='/'):
         value = value.replace('\\', '/')
@@ -206,7 +206,7 @@ class Book:
                         # 位元組同時符合兩種編碼時，以目標頁實際錨點保留手動覆寫的語意。
                         if name not in self._anchors:
                             parser = AnchorParser()
-                            parser.feed(self.pages[name].html)
+                            parser.feed(self.decode(name)[0])
                             parser.close()
                             self._anchors[name] = parser.names
                         if legacy in self._anchors[name]:
@@ -245,13 +245,10 @@ class Book:
             return []
         results = []
         for name, page in self.pages.items():
-            start, offsets = 0, []
-            while (start := page.normalized.find(needle, start)) >= 0:
-                offsets.append(start)
-                start += max(1, len(needle))
-            if offsets:
-                offset = offsets[0]
-                results.append({'path': name, 'title': page.title, 'count': len(offsets),
+            offset = page.normalized.find(needle)
+            if offset >= 0:
+                count = 1 + page.normalized.count(needle, offset + len(needle))
+                results.append({'path': name, 'title': page.title, 'count': count,
                                 'offset': offset, 'length': len(needle),
                                 'snippet': page.text[max(0, offset - 35):offset + len(needle) + 65]})
         return results
@@ -266,7 +263,8 @@ class Book:
 
     def render(self, name, prefix):
         renderer = Renderer(self, name, prefix)
-        renderer.feed(self.pages[name].html)
+        renderer.feed(self.decode(name)[0])
+        renderer.close()
         return ('<!doctype html><html><head><meta charset="utf-8">'
                 '<style>mark[data-chm-hit]{background:#ffdf7a!important;color:#191919!important}</style>'
                 '</head><body>' + ''.join(renderer.output) + '</body></html>').encode('utf-8')

@@ -1,7 +1,10 @@
 """真實 Edge DOM／截圖驗證；僅驗證環境需已有 Playwright，應用程式不依賴它。"""
+import argparse
 import json
 from pathlib import Path
+import subprocess
 import tempfile
+import time
 
 from playwright.sync_api import sync_playwright
 
@@ -11,6 +14,10 @@ from tests.test_launch import launch, await_ready, stop
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--exe', type=Path, help='改用已打包的 Windows 執行檔')
+    parser.add_argument('--htw', type=Path, help='加測 HTW2.12.3 大型 CHM')
+    args = parser.parse_args()
     generate()
     records = []
     with tempfile.TemporaryDirectory() as temporary:
@@ -19,10 +26,18 @@ def main():
                 str(Path(temporary)/'edge-profile'), channel='msedge', headless=True,
                 viewport={'width':1400,'height':900}, locale='zh-TW', accept_downloads=False)
             try:
-                for fixture in sorted(FIXTURES.glob('*.chm')):
+                fixtures = sorted(FIXTURES.glob('*.chm'))
+                if args.htw:
+                    fixtures.append(args.htw)
+                for fixture in fixtures:
                     ready=Path(temporary)/'ready.json'
                     ready.unlink(missing_ok=True)
-                    process=launch(fixture,ready)
+                    started = time.perf_counter()
+                    if args.exe:
+                        process = subprocess.Popen([args.exe.resolve(), fixture, '--no-browser', '--ready-file', ready],
+                                                   cwd=temporary, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    else:
+                        process=launch(fixture,ready)
                     info=None
                     page=None
                     try:
@@ -31,11 +46,60 @@ def main():
                         errors=[]
                         page.on('pageerror',lambda error:errors.append(str(error)))
                         page.goto(info['url'])
+                        if fixture == args.htw:
+                            frame = page.frame_locator('#page')
+                            frame.locator('#winchm_template_content').get_by_text('零：简介', exact=True).first.wait_for()
+                            assert '欢迎来到主神空间' in frame.locator('body').inner_text()
+                            open_time = time.perf_counter() - started
+                            assert page.locator('#toc .toc-page').count() == 4713
+                            assert page.locator('#toc .toc-row:visible').count() == 6
+                            rules = page.get_by_role('button', name='基础规则', exact=True)
+                            rules.click()
+                            intro = page.get_by_role('button', name='前言', exact=True)
+                            intro.click()
+                            home = page.get_by_role('button', name='零：简介', exact=True)
+                            home.wait_for()
+                            rules.click()
+                            assert not home.is_visible()
+                            rules.click()
+                            home.wait_for()
+                            search_started = time.perf_counter()
+                            page.locator('#query').fill('強化')
+                            page.locator('#search button').click()
+                            page.get_by_role('heading', name='搜尋結果（4132 頁）').wait_for()
+                            search_time = time.perf_counter() - search_started
+                            assert page.locator('#matches button').count() == 100
+                            page.locator('#more').click()
+                            assert page.locator('#matches button').count() == 200
+                            page.locator('#matches button').nth(100).click()
+                            frame.locator('mark[data-chm-hit]').first.wait_for()
+                            assert '强化' in ''.join(frame.locator('mark[data-chm-hit]').all_text_contents())
+                            result_url = frame.locator('body').evaluate('node=>node.ownerDocument.URL')
+                            page.get_by_role('button', name='返回完整目錄').click()
+                            home.wait_for()
+                            assert page.locator('#toc .toc-page').count() == 4713
+                            assert not page.locator('#results').is_visible()
+                            assert frame.locator('body').evaluate('node=>node.ownerDocument.URL') == result_url
+                            assert frame.locator('mark[data-chm-hit]').count() == 0
+                            assert page.locator('#query').input_value() == ''
+                            home.click()
+                            frame.locator('#winchm_template_content').get_by_text('零：简介', exact=True).wait_for()
+                            page.locator('#query').fill('無此字串123987xyz')
+                            page.locator('#search button').click()
+                            page.get_by_role('heading',name='搜尋結果（0 頁）').wait_for()
+                            page.locator('#query').fill('')
+                            home.wait_for()
+                            assert not errors, errors
+                            print(f'PASS HTW2.12.3：4,713 頁，開啟至首頁 {open_time:.2f}s，'
+                                  f'繁體搜尋「強化」至顯示 4,132 頁結果 {search_time:.2f}s，'
+                                  '展開、收合、完整目錄返回、保留閱讀頁與無結果返回均通過。', flush=True)
+                            continue
                         page.wait_for_load_state('networkidle')
-                        page.locator('#toc button').nth(1).wait_for()
-                        assert page.locator('#toc button').count()==2
+                        page.locator('#toc .toc-toggle').click()
+                        page.locator('#toc .toc-page').nth(1).wait_for()
+                        assert page.locator('#toc .toc-page').count()==2
                         assert '測試目錄' in page.locator('#toc').inner_text()
-                        page.locator('#toc button').nth(1).click()
+                        page.locator('#toc .toc-page').nth(1).click()
                         frame=page.frame_locator('#page')
                         frame.locator('#hit').wait_for()
                         expected='電腦' if 'Big5' in fixture.name else '电脑'

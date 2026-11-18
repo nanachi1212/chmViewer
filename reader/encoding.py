@@ -23,7 +23,7 @@ def locale_encoding(lcid):
     return None
 
 
-def decode_text(data, hint=None, override='auto'):
+def decode_text(data, hint=None, override='auto', *, document=False):
     codec = canonical(override) if override != 'auto' else None
     if codec is None:
         for bom, name in ((codecs.BOM_UTF32_LE, 'utf-32'), (codecs.BOM_UTF32_BE, 'utf-32'),
@@ -48,6 +48,12 @@ def decode_text(data, hint=None, override='auto'):
                     except LookupError:
                         continue
                     break
+        if document and codec is None and not data.isascii():
+            # 個別 HTML 可採 UTF-8，即使書籍的 #SYSTEM 記錄是中文 ANSI。
+            try:
+                return data.decode('utf-8'), 'utf-8'
+            except UnicodeDecodeError:
+                pass
         codec = codec or hint
         if codec is None:
             try:

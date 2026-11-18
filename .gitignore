@@ -15,3 +15,7 @@ chm-*/
 # 測試輸出與記錄
 evidence/
 *.log
+
+# Windows 可攜版建置輸出
+build/
+dist/

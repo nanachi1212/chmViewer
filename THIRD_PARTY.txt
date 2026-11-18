@@ -1,5 +1,6 @@
 OpenCC TSCharacters.txt ver.1.1.9 | https://github.com/BYVoid/OpenCC/tree/ver.1.1.9/data/dictionary | Apache-2.0 | 未修改的字元表置於 vendor/TSCharacters.txt；授權全文 vendor/OpenCC-LICENSE.txt；SHA256 6b5a0a799bea2bb22c001f635eaa3fc2904310f0c08addbff275477a80ecf09a
-Python 標準函式庫（含 tkinter） | https://docs.python.org/3/license.html | PSF-2.0；tkinter 底層 Tcl/Tk 採其寬鬆授權（https://www.tcl-lang.org/software/tcltk/license.html） | 使用本機安裝，沒有隨專案散布 Python 或 Tcl/Tk
-7-Zip（本機實測 26.03） | https://www.7-zip.org/license.txt | 7-Zip 整體含 LGPL-2.1-or-later、BSD-3-Clause、BSD-2-Clause 與 unRAR 限制；此處只使用 CHM/LZX 解壓 | 外部既有工具，未內嵌、下載或散布其程式碼／執行檔
+Python 與 tkinter | https://docs.python.org/3/license.html | 可攜版內含 Python 執行環境與 Python/LICENSE.txt；Tcl/Tk 授權見 https://www.tcl-lang.org/software/tcltk/license.html
+7-Zip | https://www.7-zip.org/ | 可攜版內含 Igor Pavlov 的原版 7z.exe 與 7z.dll，用於 CHM/LZX 解壓。7-Zip 主要採用 GNU LGPL 2.1 或更新版本，另含 BSD 與 unRAR 條款。完整聲明隨附於 7-Zip/License.txt；原始碼：https://www.7-zip.org/download.html
 Playwright Python（僅 tests/browser_smoke.py 驗證環境） | https://github.com/microsoft/playwright-python | Apache-2.0 | 本機已安裝；非閱讀器執行依賴，未隨專案散布
 Microsoft Edge（僅本機瀏覽器驗證） | https://www.microsoft.com/edge | Microsoft 軟體授權條款 | 使用本機既有瀏覽器，未隨專案散布
+Microsoft.Web.WebView2 SDK 1.0.4314.35 | https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4314.35 | BSD-3-Clause，完整聲明隨附於 window/LICENSE.txt。可攜版內含 x64 loader 與 .NET Core/WinForms SDK 組件，使用本機的 Evergreen WebView2 Runtime。

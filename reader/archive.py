@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import uuid
 
@@ -108,6 +109,8 @@ def decode_name(raw, hint, override='auto'):
 
 
 def seven_zip():
+    if getattr(sys, 'frozen', False):
+        return str(ROOT / '7-Zip' / '7z.exe')
     for path in (Path(r'C:\Program Files\7-Zip\7z.exe'),
                  Path(r'C:\Program Files (x86)\7-Zip\7z.exe')):
         if path.is_file():
@@ -120,7 +123,7 @@ class Archive:
         self.path = Path(path).resolve()
         self.data = self.path.read_bytes()
         self._temporary = None
-        self._cache = {}
+        self._stream = None
         try:
             self._parse()
             self.records = system_records(self.read_raw(b'/#SYSTEM')) if b'/#SYSTEM' in self.raw else {}
@@ -195,24 +198,19 @@ class Archive:
             return self.data[start:start + entry.size]
         if entry.section != 1:
             raise ValueError('此 CHM 的壓縮格式不受支援。')
-        if name not in self._cache:
+        if self._stream is None:
             if self._temporary is None:
                 self._prepare_compressed()
-            if not self._cache:
-                result = subprocess.run([self._tool, 'x', '-y', '-spd', '-so',
-                                         str(self._aliased), self._stream_name],
-                                        capture_output=True, timeout=120,
-                                        creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-                if result.returncode != 0:
-                    detail = result.stderr.decode('utf-8', errors='replace').strip()
-                    raise ValueError('7-Zip 無法解壓 CHM：' + detail)
-                if len(result.stdout) != self._stream_size:
-                    raise ValueError('7-Zip 無法完整解壓 CHM 壓縮區段。')
-                self._cache.update({raw_name: result.stdout[item.offset:item.offset + item.size]
-                                    for raw_name, item in self.raw.items() if item.section == 1})
-            if len(self._cache[name]) != entry.size:
-                raise ValueError('7-Zip 無法完整解壓 CHM 頁面。')
-        return self._cache[name]
+            result = subprocess.run([self._tool, 'x', '-y', '-spd', '-so',
+                                     str(self._aliased), self._stream_name],
+                                    capture_output=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            if result.returncode != 0:
+                detail = result.stderr.decode('utf-8', errors='replace').strip()
+                raise ValueError('7-Zip 無法解壓 CHM：' + detail)
+            if len(result.stdout) != self._stream_size:
+                raise ValueError('7-Zip 無法完整解壓 CHM 壓縮區段。')
+            self._stream = result.stdout
+        return self._stream[entry.offset:entry.offset + entry.size]
 
     def names(self, override='auto'):
         names = {}
@@ -230,6 +228,7 @@ class Archive:
         return names
 
     def close(self):
+        self._stream = None
         if self._temporary is not None:
             self._temporary.cleanup()
             self._temporary = None
