@@ -58,6 +58,12 @@ def main():
                             size = lambda node: node.evaluate('n=>parseFloat(getComputedStyle(n).fontSize)')
                             assert page.locator('#fontFamily').input_value() == 'PMingLiU'
                             assert 'PMingLiU' in title.evaluate('n=>getComputedStyle(n).fontFamily')
+                            assert page.locator('#lineHeight').input_value() == '180'
+                            ratio = title.evaluate("""n=>{
+                                const style = getComputedStyle(n);
+                                return parseFloat(style.lineHeight)/parseFloat(style.fontSize);
+                            }""")
+                            assert abs(ratio - 1.8) < 0.01
                             assert page.locator('#fontSize').input_value() == '150'
                             large_size = size(title)
                             page.locator('#fontSize').select_option('100')
@@ -121,11 +127,14 @@ def main():
                         font = page.get_by_label('內文字級')
                         family = page.get_by_label('內文字體')
                         spacing = page.get_by_label('文字間距')
+                        line_height = page.get_by_label('行距', exact=True)
                         assert font.input_value() == ('100' if number==0 else '150')
                         assert family.input_value() == ('original' if number==0 else 'PMingLiU')
+                        assert line_height.input_value() == ('0' if number==0 else '180')
                         font.select_option('100')
                         family.select_option('original')
                         spacing.select_option('0')
+                        line_height.select_option('0')
                         hit = frame.locator('#hit')
                         hit.evaluate("""node=>{
                             node.style.setProperty('font-size','18px','important');
@@ -142,22 +151,43 @@ def main():
                             assert sizes == [n*percent/100 for n in (18,24,27)], (percent,sizes)
                             assert frame.locator('img').bounding_box()['width'] == image_width
                         assert hit.get_attribute('style') == original_style
+                        probe = frame.locator('#line-height-probe')
+                        hit.evaluate("""node=>{
+                            const sample = node.ownerDocument.createElement('div');
+                            sample.id = 'line-height-probe';
+                            sample.setAttribute('style', 'font: 20px/22px serif !important');
+                            sample.innerHTML = '<span>第一行</span><br><span>第二行</span>';
+                            node.after(sample);
+                        }""")
+                        line_distance = """node=>node.lastElementChild.getBoundingClientRect().top
+                            - node.firstElementChild.getBoundingClientRect().top"""
+                        assert probe.evaluate(line_distance) == 22
+                        line_height.select_option('180')
+                        assert probe.evaluate(line_distance) == 36
                         family.select_option('DFKai-SB')
                         assert 'DFKai-SB' in hit.evaluate('n=>getComputedStyle(n).fontFamily')
                         spacing.select_option('10')
                         font.select_option('150')
                         assert hit.evaluate("""n=>[getComputedStyle(n).fontFamily.includes('DFKai-SB'),
-                            getComputedStyle(n).fontSize, getComputedStyle(n).letterSpacing]""") == [True, '27px', '3px']
+                            getComputedStyle(n).fontSize, getComputedStyle(n).letterSpacing,
+                            parseFloat(getComputedStyle(n).lineHeight)]""") == [True, '27px', '3px', 48.6]
+                        line_height.select_option('0')
+                        assert hit.evaluate('n=>getComputedStyle(n).lineHeight') == '36px'
+                        font.select_option('100')
                         family.select_option('original')
-                        assert hit.evaluate('n=>getComputedStyle(n).fontFamily') == 'serif'
-                        assert hit.evaluate('n=>getComputedStyle(n).fontSize') == '27px'
-                        family.select_option('PMingLiU')
                         spacing.select_option('0')
+                        assert hit.get_attribute('style') == original_style
+                        assert probe.evaluate(line_distance) == 22
+                        assert hit.evaluate('n=>getComputedStyle(n).fontFamily') == 'serif'
+                        family.select_option('PMingLiU')
+                        font.select_option('150')
+                        line_height.select_option('180')
                         frame.get_by_text('返回首頁',exact=True).click()
                         frame.locator('#back').wait_for()
                         frame.get_by_text('開啟中文頁面',exact=True).click()
                         frame.locator('#hit').wait_for()
                         assert frame.locator('#hit').evaluate('n=>getComputedStyle(n).fontSize') == '30px'
+                        assert frame.locator('#hit').evaluate('n=>getComputedStyle(n).lineHeight') == '54px'
                         assert 'PMingLiU' in frame.locator('#hit').evaluate('n=>getComputedStyle(n).fontFamily')
                         page.locator('#query').fill('電腦')
                         page.locator('#search button').click()

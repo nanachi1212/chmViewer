@@ -18,6 +18,7 @@ from reader.book import Book, CHARACTERS
 HTML_TYPES = {'.htm', '.html', '.xhtml'}
 FONT_SIZES = (75, 90, 100, 110, 125, 150, 175, 200)
 TEXT_SPACINGS = (0, 5, 10, 15)
+LINE_HEIGHTS = (0, 140, 160, 180, 200)
 FONT_FAMILIES = ('original', 'Microsoft JhengHei', 'PMingLiU', 'DFKai-SB')
 TYPES = {'.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
          '.gif': 'image/gif', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon',
@@ -124,6 +125,14 @@ def load_font_family():
     return family if family in FONT_FAMILIES else 'original'
 
 
+def load_line_height():
+    try:
+        percent = int(preference_file('line-height.txt').read_text(encoding='ascii'))
+    except (OSError, ValueError):
+        return 0
+    return percent if percent in LINE_HEIGHTS else 0
+
+
 class ReaderServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -206,6 +215,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send({'percent': load_text_spacing(), 'choices': TEXT_SPACINGS})
                 elif route == 'api/font-family':
                     self.send({'family': load_font_family(), 'choices': FONT_FAMILIES})
+                elif route == 'api/line-height':
+                    self.send({'percent': load_line_height(), 'choices': LINE_HEIGHTS})
                 elif route == 'api/characters':
                     self.send({chr(key): value for key, value in CHARACTERS.items()})
                 elif route == 'api/search':
@@ -269,6 +280,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('不支援此內文字體。')
                 write_preference(preference_file('font-family.txt'), family)
                 self.send({'family': family})
+            elif route == 'api/line-height':
+                percent = data.get('percent') if isinstance(data, dict) else None
+                if type(percent) is not int or percent not in LINE_HEIGHTS:
+                    raise ValueError('不支援此內文行距。')
+                write_preference(preference_file('line-height.txt'), str(percent))
+                self.send({'percent': percent})
             elif route == 'api/encoding':
                 encoding = data.get('encoding')
                 if encoding not in {'auto', 'gb18030', 'utf-8', 'cp950'}:

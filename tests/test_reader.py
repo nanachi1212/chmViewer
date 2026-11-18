@@ -423,6 +423,26 @@ class HTTPTests(unittest.TestCase):
                 with self.request('api/font-family') as response:
                     self.assertEqual(json.load(response)['family'], 'original')
 
+    def test_line_height_preference(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = Path(directory) / 'line-height.txt'
+            with patch('app.preference_file', return_value=settings):
+                with self.request('api/line-height') as response:
+                    self.assertEqual(json.load(response), {'percent': 0, 'choices': [0, 140, 160, 180, 200]})
+                self.assertFalse(settings.exists())
+                with self.request('api/line-height', {'percent': 160}) as response:
+                    self.assertEqual(json.load(response)['percent'], 160)
+                for invalid in [-1, 999, '160', 160.0, False]:
+                    with self.assertRaises(HTTPError) as error:
+                        self.request('api/line-height', {'percent': invalid})
+                    self.assertEqual(error.exception.code, 400)
+                    error.exception.close()
+                with self.request('api/line-height') as response:
+                    self.assertEqual(json.load(response)['percent'], 160)
+                settings.write_text('invalid', encoding='ascii')
+                with self.request('api/line-height') as response:
+                    self.assertEqual(json.load(response)['percent'], 0)
+
     def test_manual_encoding_preserves_browser_links_assets_and_search(self):
         with tempfile.TemporaryDirectory() as folder:
             for codec, label, override, lcid in [('gbk','GBK','gb18030',0x804),
